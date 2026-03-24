@@ -1,0 +1,277 @@
+/*------------------------------------------------------------------------------------*/
+/*------------------------------  YOUR CUSTOM CSS STYLE  -----------------------------*/
+
+/*
+* 1. Background colors
+* 2. Borders
+* 3. Box Shadows
+* 4. Fonts
+* 5. Message Colors
+* 6. Global Styles
+* 7. Width
+* 8. Pagination 
+*
+*/
+
+
+/*  1. Background Colors  */
+
+.bg-white{
+	background-color: white;
+}
+
+.bg-orange{
+	background-color: orange;
+}
+
+.bg-yellow{
+	background-color: yellow;
+}
+
+.bg-red{
+	background-color: red;
+}
+
+.bg-purple{
+	background-color: purple;
+}
+
+.bg-blue{
+	background-color: blue;
+}
+
+.bg-magenta{
+	background-color: magenta;
+}
+
+
+/* 2. Borders */
+
+.round-border5{
+	border-radius: 5px;
+}
+
+.round-border10{
+	border-radius: 10px;
+}
+
+.round-border15{
+	border-radius: 15px;
+}
+
+.round-border20{
+	border-radius: 20px;
+}
+
+/*  3. Box Shadows */
+
+.box-shadow-common{
+	/* box-shadow: none|h-shadow v-shadow blur spread color |inset|initial|inherit; */
+	box-shadow: 5px 5px 5px 3px #999; 
+	
+}
+
+
+/*  4. Fonts */
+
+@font-face{
+	font-family: track;
+	src: url('../fonts/arial.ttf');
+}
+
+@font-face{
+	font-family: din_regular;
+	src: url('../fonts/DINNextCYR-Regular.otf');
+}
+
+@font-face{
+	font-family: din_light;
+	src: url('../fonts/DINNextCYR-Light.otf');
+}
+
+@font-face{
+	font-family: din_light1;
+	src: url('../fonts/DINNextLTPro-Light.otf');
+}
+
+/* 5. Message Colors */
+
+.msg-success{
+	color: green;
+}
+
+.msg-error{
+	color: red;
+}
+
+/* 6. Global Styles */
+
+.loading-anim{
+	/* height: 48px;
+	width: 48px; */
+	display: inline-block;
+}
+
+.loading-anim img{
+	height: 32px;
+	width: 32px;
+}
+
+.width-20{
+	max-width: 20px;
+}
+.width-50{
+	max-width: 50px;
+}
+.width-100{
+	max-width: 100px !important;
+}
+.width-200{
+	max-width: 200px;
+}
+.width-300{
+	max-width: 300px;
+}
+.inline-block{
+	display: inline-block;
+}
+.no-padding{
+	padding: 0px !important;
+}
+.no-margin{
+	margin: 0px !important;
+}
+
+
+/* 7. Pagination */
+
+.custom_pagination{
+	margin: 10px;
+	float: right;
+}
+
+.custom_pagination a{
+	background: #eee;
+	border-radius: 3px;
+	text-decoration: none;
+	
+}
+
+.custom_pagination a:hover{
+	text-decoration: none;
+}
+
+
+.custom_pagination>*{
+	padding: 5px 10px 5px 10px;
+	margin: 2px;
+}
+
+/* 8. Validation */
+
+.input-border-red{
+	border: 1px solid red !important;
+}
+
+.input-border-green{
+	border: 1px solid green !important;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* overriding Theme Style */
+
+.logo-default{
+	margin: 0px !important;
+}
+
+.modal-backdrop, .modal-backdrop.fade.in {
+    opacity: 0.7;
+    filter: alpha(opacity=70);
+}
+
+.page-top{
+    clear: none !important;
+    width: auto !important;
+}
+
+.loading-message>img:nth-child(1){
+    display: none !important;
+}
+.blockOverlay{
+    opacity: 0.6 !important;
+}
+
+.nav-item .sub-menu .nav-link .title{
+    margin-left: 15px;
+    display: block;
+    word-wrap: break-word;
+    margin-right: 30px;
+}
+/* overriding Theme Style */
+
+
+
+
+
+
+
+input.parsley-success,
+select.parsley-success,
+textarea.parsley-success {
+  color: #468847 !important;
+  background-color: #DFF0D8 !important;
+  border: 1px solid #D6E9C6 !important;
+}
+
+input.parsley-error,
+select.parsley-error,
+textarea.parsley-error {
+  color: #B94A48 !important;
+  background-color: #F2DEDE !important;
+  border: 1px solid #EED3D7 !important;
+}
+
+.parsley-errors-list {
+  margin: 2px 0 3px;
+  padding: 0;
+  list-style-type: none;
+  font-size: 0.9em;
+  line-height: 1.2em;
+  opacity: 0;
+  color: #F64E60;
+
+  transition: all .3s ease-in;
+  -o-transition: all .3s ease-in;
+  -moz-transition: all .3s ease-in;
+  -webkit-transition: all .3s ease-in;
+}
+
+.parsley-errors-list.filled {
+  opacity: 1;
+}
+
+
+/** Error message text in red color for form fields */
+.scodezy-error-msg{
+    color: #F64E60;
+}

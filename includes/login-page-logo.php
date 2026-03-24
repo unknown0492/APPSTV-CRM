@@ -1,0 +1,1 @@
+<img alt="Logo" src="assets/scodezy/media/logo/logo.png" />

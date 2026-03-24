@@ -1,0 +1,4 @@
+.table_view_user{}
+.table_view_user tbody tr th:nth-child(1){
+    text-align: right;
+}

@@ -1,0 +1,7 @@
+.scodezy-selected-files .file-item {
+    flex-direction: column;
+}
+
+.scodezy-selected-files .file-item .remove-file-image{
+    cursor: pointer;
+}

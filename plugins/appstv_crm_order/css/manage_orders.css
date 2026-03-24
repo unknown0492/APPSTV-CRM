@@ -1,0 +1,111 @@
+.table-list-products{}
+
+.table-list-products tr td{
+    padding-top: 15px;
+    padding-bottom: 15px;
+    
+}
+
+.table-list-products tr td.srNo{
+    vertical-align: top;
+    font-weight: bold;
+    font-size: 15px;
+}
+
+.table-list-products tr td.product_title{
+    vertical-align: top;
+}
+
+.table-list-products tr td.product_qty{
+    vertical-align: top;
+}
+
+.table-list-products tr td.product_total{
+    vertical-align: top;    
+}
+
+.table-list-products tr td span.product_title{
+    font-weight: bold;
+    font-size: 15px;
+    padding: 0px !important;
+}
+
+.table-list-products tr td span.product_qty{
+    font-weight: bold;
+    font-size: 15px;
+    padding: 0px !important;
+}
+
+.table-list-products tr td span.product_total{
+    font-weight: bold;
+    font-size: 15px;
+    padding: 0px !important;
+}
+
+.table-edit-order{}
+
+.table-edit-order tr td{
+    word-wrap: anywhere;
+}
+
+.table-order-meta{}
+
+.table-order-meta tr{
+    border-color: #61ebf0;
+}
+
+.table-order-meta tr th{
+    word-wrap: anywhere;
+    border-color: #61ebf0;
+}
+
+.table-order-meta tr td{
+    word-wrap: anywhere;
+    border-color: #61ebf0;
+}
+
+.table-prepared-order-summary tbody tr td.order_ids{
+    
+}
+
+.table-confirm-delivery-items tbody tr td.product-serial-number{
+    
+}
+
+.table-confirm-delivery-items tbody tr td.product-serial-number span.first-half-serial-number{
+    font-size: 20px;
+    font-family: Courier;
+    letter-spacing: 0.1rem;
+}
+
+.table-confirm-delivery-items tbody tr td.product-serial-number input.second-half-serial-number{
+    display: inline-block !important;
+    width: 120px !important;
+    padding: 2px;
+    font-size: 20px;
+    font-family: Courier;
+    letter-spacing: 0.1rem;
+    margin-left: 5px;
+}
+
+.table-confirm-delivery-items tbody tr td.product-serial-number input.second-half-serial-number::placeholder{
+    font-size: 15px !important;
+    font-family: Arial !important;
+}
+
+
+
+.cd_picture{
+    display: flex !important;
+    margin-top: 8px;
+}
+
+
+
+
+
+#table_orders tbody tr td{
+    padding-top: 0.2rem !important;
+    padding-bottom: 0.2rem !important;
+    vertical-align: middle !important;
+}

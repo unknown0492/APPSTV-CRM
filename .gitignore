@@ -1,0 +1,12 @@
+data/
+
+assets_old/
+
+images/
+
+nbproject/
+
+plugins/appstv_crm_apps/data
+plugins/appstv_crm_customer/data
+plugins/appstv_crm_order/data
+plugins/appstv_crm_products/data
