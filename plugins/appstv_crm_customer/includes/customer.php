@@ -7,6 +7,7 @@ class Customer {
     private $customerSource;                                            // --> The source system on which this customer exist. Foreign Key of sources->source_id
     private $userID;							// --> Foreign Key from Users Table
     private $title;
+    private $companyName;
     private $firstName;
     private $middleName;
     private $lastName;
@@ -23,6 +24,7 @@ class Customer {
     public const DB_FIELD_CUSTOMER_SOURCE       = "customer_source";
     public const DB_FIELD_USER_ID               = "user_id";
     public const DB_FIELD_TITLE                 = "title";
+    public const DB_FIELD_COMPANY_NAME          = "company_name";
     public const DB_FIELD_FIRST_NAME            = "first_name";
     public const DB_FIELD_MIDDLE_NAME           = "middle_name";
     public const DB_FIELD_LAST_NAME             = "last_name";
@@ -74,6 +76,7 @@ class Customer {
         $customer_source        = ($this->getCustomerSource() === NULL)?'':$this->getCustomerSource();                                            
         $user_id                = ($this->getUserID() === NULL)?'':$this->getUserID();
         $title                  = ($this->getTitle() === NULL)?'':$this->getTitle(); 
+        $company_name           = ($this->getCompanyName() === NULL)?'':$this->getCompanyName();
         $first_name             = ($this->getFirstName() === NULL)?'':$this->getFirstName();
         $middle_name            = ($this->getMiddleName() === NULL)?'':$this->getMiddleName();
         $last_name              = ($this->getLastName() === NULL)?'':$this->getLastName();
@@ -86,8 +89,8 @@ class Customer {
         $alternate_mobile       = ($this->getAlternateMobile() === NULL)?'':$this->getAlternateMobile();
         $currency               = ($this->getCurrency() === NULL)?'':$this->getCurrency();
         
-        $sql = "INSERT INTO `customers` (`customer_id`, `customer_source`, `user_id`, `title`, `first_name`, `middle_name`, `last_name`, `primary_email`, `alternate_email`, `created_at`, `updated_at`, `state`, `primary_mobile`, `alternate_mobile`, `currency`) "
-                . "VALUES ( '$customer_id', '$customer_source', '$user_id', '$title', '$first_name', '$middle_name', '$last_name', '$primary_email', '$alternate_email', '$created_at', '$updated_at', '$state', '$primary_mobile', '$alternate_mobile', '$currency' );";
+        $sql = "INSERT INTO `customers` (`customer_id`, `customer_source`, `user_id`, `title`, `first_name`, `middle_name`, `last_name`, `primary_email`, `alternate_email`, `created_at`, `updated_at`, `state`, `primary_mobile`, `alternate_mobile`, `currency`, `company_name`) "
+        . "VALUES ( '$customer_id', '$customer_source', '$user_id', '$title', '$first_name', '$middle_name', '$last_name', '$primary_email', '$alternate_email', '$created_at', '$updated_at', '$state', '$primary_mobile', '$alternate_mobile', '$currency', '$company_name' );";
         $rows = insertQuery( $sql );
         if( $rows > 0 ){
             return $this;
@@ -122,6 +125,8 @@ class Customer {
         $this->setUserID( $val[ self::DB_FIELD_USER_ID ] );
         
         $this->setTitle( $val[ self::DB_FIELD_TITLE ] );
+        
+        $this->setCompanyName( $val[ self::DB_FIELD_COMPANY_NAME ] );
         
         $this->setFirstName( $val[ self::DB_FIELD_FIRST_NAME ] );
         
@@ -160,6 +165,7 @@ class Customer {
         // These fields are to be updated
         $customer_source        = $this->getCustomerSource();                                            
         $title                  = $this->getTitle(); 
+        $company_name           = $this->getCompanyName();
         $first_name             = $this->getFirstName();
         $middle_name            = $this->getMiddleName();
         $last_name              = $this->getLastName();
@@ -177,6 +183,9 @@ class Customer {
         }
         if( $title !== NULL ){
             $update_params .= "`" . self::DB_FIELD_TITLE . "`='$title', ";
+        }
+        if( $company_name !== NULL ){
+            $update_params .= "`" . self::DB_FIELD_COMPANY_NAME . "`='$company_name', ";
         }
         if( $first_name !== NULL ){
             $update_params .= "`" .  self::DB_FIELD_FIRST_NAME . "`='$first_name', ";
@@ -241,6 +250,10 @@ class Customer {
     public function getTitle() {
         return $this->title;
     }
+    
+    public function getCompanyName() {
+        return $this->companyName;
+    }
 
     public function getFirstName() {
         return $this->firstName;
@@ -300,6 +313,10 @@ class Customer {
 
     public function setTitle($title): void {
         $this->title = $title;
+    }
+    
+    public function setCompanyName($companyName): void {
+        $this->companyName = $companyName;
     }
 
     public function setFirstName($firstName): void {
