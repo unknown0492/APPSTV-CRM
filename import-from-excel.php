@@ -15,6 +15,8 @@ require_once 'load-all.php';
 // Include SimpleXLSX library for Excel reading
 require_once LIB_PATH . '/Classes/SimpleXLSX.php';
 
+use Shuchkin\SimpleXLSX;
+
 // Include all necessary class files
 //require_once PLU_PATH . '/appstv_crm_customer/includes/customer.php';
 require_once PLU_PATH . '/appstv_crm_order/includes/order_invoice.php';
@@ -78,36 +80,60 @@ $stats = [
 try {
     // Load Excel file using SimpleXLSX
     if ($xlsx = SimpleXLSX::parse($excelFilePath)) {
-        $rows = $xlsx->rows();
-        $totalRows = count($rows);
+    $rows = $xlsx->rows();
+    
+    echo "<p class='success'>✅ Excel file loaded successfully!</p>";
+    echo "<p class='info'>📋 Total rows found: <strong>" . count($rows) . "</strong></p>";
+    echo "<hr>";
+    
+    // Process each row (starting from index 1, skipping header at index 0)
+    foreach ($rows as $i => $row) {
+        // Skip header row
+        if ($i == 0) {
+            echo "<p class='info'>Skipping header row...</p>";
+            continue;
+        }
         
-        echo "<p class='success'>✅ Excel file loaded successfully!</p>";
-        echo "<p class='info'>📋 Total rows in Excel: <strong>" . ($totalRows - 1) . "</strong> (excluding header)</p>";
-        echo "<hr>";
+        // Validate row
+        if ($row === false || $row === null || !is_array($row)) {
+            echo "<p class='warning'>⚠️ Row #" . ($i + 1) . " is invalid, skipping...</p>";
+            echo "<hr>";
+            continue;
+        }
         
-        // Process each row (starting from index 1, skipping header at index 0)
-        for ($i = 1; $i < $totalRows; $i++) {
-            $row = $rows[$i];
-            $rowNumber = $i + 1; // Excel row number (header is row 1)
-            $stats['total_rows']++;
-            $rowSuccess = true;
-            $rowErrors = [];
-            
-            echo "<div class='row-header'>🔄 Processing Row #$rowNumber</div>";
-            
-            try {
+        // Skip completely empty rows
+        if (empty(array_filter($row))) {
+            echo "<p class='warning'>⚠️ Row #" . ($i + 1) . " is empty, skipping...</p>";
+            echo "<hr>";
+            continue;
+        }
+        
+        $rowNumber = $i + 1; // Excel row number
+        $stats['total_rows']++;
+        $rowSuccess = true;
+        $rowErrors = [];
+        
+        echo "<div class='row-header'>🔄 Processing Row #$rowNumber</div>";
+        
+        try {
+            // Debug: Show raw row data
+            echo "<p class='info'>🔍 Debug - Row data count: " . count($row) . " columns</p>";
+
                 // Read all cell values and trim whitespace
-                $companyName = isset($row[0]) ? trim($row[0]) : '';
-                $invoiceNo = isset($row[1]) ? trim($row[1]) : '';
-                $invoiceDate = isset($row[2]) ? trim($row[2]) : '';
-                $productID = isset($row[3]) ? trim($row[3]) : '';
-                $dateOfPurchase = isset($row[4]) ? trim($row[4]) : '';
-                // Skip columns 5-7 (Warranty Expired, Extended Warranty columns - all NIL)
-                $serialNo = isset($row[8]) ? trim($row[8]) : '';
-                $dateOfService = isset($row[9]) ? trim($row[9]) : '';
-                $newSerialNo = isset($row[10]) ? trim($row[10]) : '';
-                $remark = isset($row[11]) ? trim($row[11]) : '';
-                $refNo = isset($row[12]) ? trim($row[12]) : '';
+                $companyName = isset($row[0]) ? trim((string)$row[0]) : '';
+                $invoiceNo = isset($row[1]) ? trim((string)$row[1]) : '';
+                $invoiceDate = isset($row[2]) ? trim((string)$row[2]) : '';
+                $productID = isset($row[3]) ? trim((string)$row[3]) : '';
+                $dateOfPurchase = isset($row[4]) ? trim((string)$row[4]) : '';
+                // Columns 5-7 are Warranty Expired, Extended Warranty Start/End (all NIL - skip)
+                $serialNo = isset($row[8]) ? trim((string)$row[8]) : '';
+                $dateOfService = isset($row[9]) ? trim((string)$row[9]) : '';
+                $newSerialNo = isset($row[10]) ? trim((string)$row[10]) : '';
+                $remark = isset($row[11]) ? trim((string)$row[11]) : '';
+                $refNo = isset($row[12]) ? trim((string)$row[12]) : '';
+
+                // Debug output
+                echo "<p class='info'>🔍 Debug - Product ID: '$productID' | Serial: '$serialNo' | Invoice: '$invoiceNo'</p>";
                 
                 echo "<p class='info'>📝 Company: <strong>$companyName</strong> | Invoice: <strong>$invoiceNo</strong> | Serial: <strong>$serialNo</strong></p>";
                 
