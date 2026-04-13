@@ -24,6 +24,16 @@ require_once PLU_PATH . '/appstv_crm_order/includes/invoice_product_sn.php';
 require_once PLU_PATH . '/appstv_crm_products/includes/product_sn_warranty.php';
 require_once PLU_PATH . '/appstv_crm_products/includes/product_warranty_replacement.php';
 
+$import_log = [
+    'customers' => [],
+    'order_invoices' => [],
+    'invoice_product_sn' => [],
+    'product_sn' => [],
+    'product_sn_warranty' => [],
+    'product_sn_extended_warranty' => [],
+    'product_warranty_replacements' => []
+];
+
 // Set execution time to unlimited for large files
 set_time_limit(0);
 ini_set('memory_limit', '512M');
@@ -167,6 +177,7 @@ try {
                     $createdCustomer = $customer->createCustomer();
                     if ($createdCustomer !== null) {
                         $customerID = $createdCustomer->getCustomerID();
+                        $import_log['customers'][] = $customerID;
                         $stats['customers_created']++;
                         echo "<p class='success'>✅ New customer created: ID = $customerID</p>";
                     } else {
@@ -198,6 +209,7 @@ try {
                         $createdInvoice = $invoice->createInvoice();
                         if ($createdInvoice !== null) {
                             $invoiceID = $createdInvoice->getInvoiceID();
+                            $import_log['order_invoices'][] = $invoiceID;
                             $stats['invoices_created']++;
                             echo "<p class='success'>✅ New invoice created: ID = $invoiceID, No = $invoiceNo, Date = $invoiceDate</p>";
                         } else {
@@ -240,9 +252,10 @@ try {
                         $sql = "INSERT INTO product_sn (product_sn_id, product_id, serial_number, created_on, allotted_to_customer) "
                              . "VALUES ('$generatedProductSNID', '$e_product_id', '$e_serial_no', '$currentTimestamp', 1)";
                         
-                        $rows = insertQuery($sql);
-                        if ($rows > 0) {
+                        $insertedRows = insertQuery($sql);
+                        if ($insertedRows > 0) {
                             $productSNID = $generatedProductSNID;
+                            $import_log['product_sn'][] = $productSNID;
                             $stats['product_sn_created']++;
                             echo "<p class='success'>✅ New Product SN created: ID = $productSNID</p>";
                         } else {
@@ -259,6 +272,7 @@ try {
                         
                         $createdIPSN = $ipsnObj->createInvoiceProductSN();
                         if ($createdIPSN !== null) {
+                            $import_log['invoice_product_sn'][] = $createdIPSN->getIpsnID();
                             echo "<p class='success'>✅ Invoice linked to Product SN</p>";
                         } else {
                             echo "<p class='warning'>⚠️ Failed to link invoice to product SN (may already exist)</p>";
@@ -284,6 +298,7 @@ try {
                     $createdWarranty = $warranty->createWarranty();
                     if ($createdWarranty !== null) {
                         $psnwID = $createdWarranty->getPsnwID();
+                        $import_log['product_sn_warranty'][] = $psnwID;
                         $stats['warranties_created']++;
                         echo "<p class='success'>✅ Warranty created: ID = $psnwID, Start Date = $dateOfPurchase, Period = $warrantyPeriodDays days</p>";
                     } else {
@@ -320,9 +335,10 @@ try {
                             $sql = "INSERT INTO product_sn (product_sn_id, product_id, serial_number, created_on, allotted_to_customer) "
                                  . "VALUES ('$generatedNewProductSNID', '$e_product_id', '$e_new_serial_no', '$currentTimestamp', 1)";
                             
-                            $rows = insertQuery($sql);
-                            if ($rows > 0) {
+                            $insertedRows = insertQuery($sql);
+                            if ($insertedRows > 0) {
                                 $newProductSNID = $generatedNewProductSNID;
+                                $import_log['product_sn'][] = $newProductSNID;
                                 $stats['product_sn_created']++;
                                 echo "<p class='success'>✅ New Product SN created for replacement: ID = $newProductSNID</p>";
                             } else {
@@ -351,6 +367,7 @@ try {
                             $createdNewInvoice = $newInvoice->createInvoice();
                             if ($createdNewInvoice !== null) {
                                 $newInvoiceID = $createdNewInvoice->getInvoiceID();
+                                $import_log['order_invoices'][] = $newInvoiceID;
                                 $stats['invoices_created']++;
                                 echo "<p class='success'>✅ New replacement invoice created: ID = $newInvoiceID</p>";
                             } else {
@@ -372,6 +389,7 @@ try {
                         
                         $createdReplacement = $replacement->createReplacement();
                         if ($createdReplacement !== null) {
+                            $import_log['product_warranty_replacements'][] = $createdReplacement->getPwrpID();
                             $stats['replacements_created']++;
                             echo "<p class='success'>✅ Warranty replacement record created</p>";
                         } else {
@@ -415,6 +433,13 @@ try {
     echo "<pre>" . $e->getTraceAsString() . "</pre>";
 }
 
+// =================================================================
+// Save Import Log
+// =================================================================
+$log_file = __DIR__ . '/import-log-' . date('Ymd-His') . '.json';
+file_put_contents($log_file, json_encode($import_log, JSON_PRETTY_PRINT));
+echo "<p class='info'>📋 Import log saved to: <strong>" . basename($log_file) . "</strong></p>";
+
 // Display Summary
 echo "<div class='summary'>";
 echo "<h2>📊 Import Summary</h2>";
@@ -441,33 +466,21 @@ echo "</div></body></html>";
  * @return int Number of days
  */
 function calculateWarrantyPeriodDays($startDate) {
-    // Parse the date (dd-mm-YYYY format)
     $parts = explode('-', $startDate);
     if (count($parts) !== 3) {
         return 1095; // Default to 3 years (365 * 3)
     }
     
-    $day = $parts[0];
-    $month = $parts[1];
-    $year = $parts[2];
-    
-    // Create DateTime object
     $start = DateTime::createFromFormat('d-m-Y', $startDate);
     if (!$start) {
-        return 1095; // Default if date parsing fails
+        return 1095;
     }
     
-    // Add 3 years
     $end = clone $start;
     $end->modify('+3 years');
     
-    // Calculate difference in days
     $interval = $start->diff($end);
-    $days = $interval->days;
-    
-    return $days;
+    return $interval->days;
 }
-
-
 
 ?>

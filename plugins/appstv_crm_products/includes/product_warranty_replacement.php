@@ -41,17 +41,9 @@ class ProductWarrantyReplacement {
         
         while($attempt < $maxAttempts){
             $date = new DateTime("now", new DateTimeZone("+0800"));
-            $day = $date->format('d');
-            
-            // Get milliseconds (using microseconds and converting to milliseconds)
-            $microtime = microtime(true);
-            $milliseconds = sprintf("%04d", ($microtime - floor($microtime)) * 10000);
-            
-            // First 6 digits: dd + 4-digit milliseconds
-            $prefix = $day . $milliseconds;
-            
-            // Last 4 digits: random number
-            $suffix = $this->generateRandomNumber(4);
+            $milliseconds = sprintf("%04d", (int)(fmod(microtime(true), 1) * 10000));
+            $prefix = $date->format('d') . $milliseconds;
+            $suffix = rand(1000, 9999);
             
             $pwrp_id = $prefix . $suffix;
             
