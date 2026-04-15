@@ -23,6 +23,7 @@ require_once PLU_PATH . '/appstv_crm_order/includes/order_invoice.php';
 require_once PLU_PATH . '/appstv_crm_order/includes/invoice_product_sn.php';
 require_once PLU_PATH . '/appstv_crm_products/includes/product_sn_warranty.php';
 require_once PLU_PATH . '/appstv_crm_products/includes/product_warranty_replacement.php';
+require_once PLU_PATH . '/appstv_crm_products/includes/product.php';
 
 $import_log = [
     'customers' => [],
@@ -39,8 +40,10 @@ set_time_limit(0);
 ini_set('memory_limit', '512M');
 
 // Output buffer to show progress in real-time
+if (ob_get_level()) {
+    ob_end_flush();
+}
 ob_implicit_flush(true);
-ob_end_flush();
 
 echo "<!DOCTYPE html>";
 echo "<html><head><title>Excel Import Progress</title>";
@@ -233,35 +236,25 @@ try {
                 // STEP 4: Process Serial Number → Product SN + Link to Invoice
                 // =================================================================
                 $productSNID = null;
-                
+
                 if (!empty($serialNo) && $rowSuccess) {
+                    // Always create new product_sn entry (no checking if exists)
+                    $generatedProductSNID = ProductSN::generateProductSnID();
                     $e_serial_no = escape_string($serialNo);
-                    $sql = "SELECT product_sn_id FROM product_sn WHERE serial_number='$e_serial_no' LIMIT 1";
-                    $result = selectQuery($sql);
-                    
-                    if (mysqli_num_rows($result) > 0) {
-                        $val = mysqli_fetch_assoc($result);
-                        $productSNID = $val['product_sn_id'];
-                        echo "<p class='success'>✅ Product SN found: ID = $productSNID</p>";
+                    $e_product_id = escape_string($productID);
+                    $currentTimestamp = date('Y-m-d H:i:s');
+
+                    $sql = "INSERT INTO product_sn (product_sn_id, product_id, serial_number, created_on, allotted_to_customer) "
+                         . "VALUES ('$generatedProductSNID', '$e_product_id', '$e_serial_no', '$currentTimestamp', 1)";
+
+                    $rows = insertQuery($sql);
+                    if ($rows > 0) {
+                        $productSNID = $generatedProductSNID;
+                        $stats['product_sn_created']++;
+                        echo "<p class='success'>✅ New Product SN created: ID = $productSNID</p>";
                     } else {
-                        // Create new product_sn entry
-                        $generatedProductSNID = generateUniqueID("psn");
-                        $e_product_id = escape_string($productID);
-                        $currentTimestamp = date('Y-m-d H:i:s');
-                        
-                        $sql = "INSERT INTO product_sn (product_sn_id, product_id, serial_number, created_on, allotted_to_customer) "
-                             . "VALUES ('$generatedProductSNID', '$e_product_id', '$e_serial_no', '$currentTimestamp', 1)";
-                        
-                        $insertedRows = insertQuery($sql);
-                        if ($insertedRows > 0) {
-                            $productSNID = $generatedProductSNID;
-                            $import_log['product_sn'][] = $productSNID;
-                            $stats['product_sn_created']++;
-                            echo "<p class='success'>✅ New Product SN created: ID = $productSNID</p>";
-                        } else {
-                            $rowErrors[] = "Failed to create product SN";
-                            $rowSuccess = false;
-                        }
+                        $rowErrors[] = "Failed to create product SN";
+                        $rowSuccess = false;
                     }
                     
                     // Link Invoice to Product SN via invoice_product_sn table
@@ -328,7 +321,7 @@ try {
                             echo "<p class='success'>✅ New Product SN found: ID = $newProductSNID</p>";
                         } else {
                             // Create new product_sn for replacement
-                            $generatedNewProductSNID = generateUniqueID("psn");
+                            $generatedNewProductSNID = ProductSN::generateProductSnID();
                             $e_product_id = escape_string($productID);
                             $currentTimestamp = date('Y-m-d H:i:s');
                             
