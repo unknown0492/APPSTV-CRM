@@ -203,6 +203,13 @@ try {
                         $val = mysqli_fetch_assoc($result);
                         $invoiceID = $val['invoice_id'];
                         echo "<p class='success'>✅ Invoice found: ID = $invoiceID</p>";
+                        
+                        // Store customer_id on the invoice
+                        if ( !empty( $customerID ) ) {
+                            $e_cust_id = escape_string( $customerID );
+                            $e_inv_id  = escape_string( $invoiceID );
+                            updateQuery( "UPDATE order_invoices SET customer_id = '$e_cust_id' WHERE invoice_id = '$e_inv_id'" );
+                        }
                     } else {
                         // Create new invoice
                         $invoice = new OrderInvoice();
@@ -215,6 +222,12 @@ try {
                             $import_log['order_invoices'][] = $invoiceID;
                             $stats['invoices_created']++;
                             echo "<p class='success'>✅ New invoice created: ID = $invoiceID, No = $invoiceNo, Date = $invoiceDate</p>";
+                            // Store customer_id on the new invoice
+                            if ( !empty( $customerID ) ) {
+                                $e_cust_id = escape_string( $customerID );
+                                $e_inv_id  = escape_string( $invoiceID );
+                                updateQuery( "UPDATE order_invoices SET customer_id = '$e_cust_id' WHERE invoice_id = '$e_inv_id'" );
+                            }
                         } else {
                             $rowErrors[] = "Failed to create invoice";
                             $rowSuccess = false;
