@@ -196,6 +196,10 @@
                             <button type="button" class="btn btn-sm btn-light-primary" id="btn_add_serial_number">
                                 <i class="fa-solid fa-plus me-1"></i>Add Serial Number
                             </button>
+                            <!-- Remove All -->
+                            <button type="button" class="btn btn-sm btn-light-danger d-none" id="btn_remove_all_serials">
+                                <i class="fa-solid fa-trash me-1"></i>Remove All
+                            </button>
                         </div>
                     </div>
                     <div class="card-body pt-4">

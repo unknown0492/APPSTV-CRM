@@ -27,6 +27,7 @@ var LSN = (function ($) {
         _bindSubmit();
         _bindReset();
         _initDatepickers();
+        _bindRemoveAll();
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -35,6 +36,12 @@ var LSN = (function ($) {
     function _updateSerialNumberCount() {
         var count = $('#lsn_serial_numbers_container .lsn-sn-row').length;
         $('#lsn_sn_count_badge').text('(' + count + ')');
+
+        if ( count > 0 ) {
+            $('#btn_remove_all_serials').removeClass('d-none');
+        } else {
+            $('#btn_remove_all_serials').addClass('d-none');
+        }
     }
     
     function _bindCustomerToggle() {
@@ -571,6 +578,38 @@ var LSN = (function ($) {
             }
         });
     }
+    
+    function _bindRemoveAll() {
+        $('#btn_remove_all_serials').on('click', function () {
+            var count = $('#lsn_serial_numbers_container .lsn-sn-row').length;
+            if ( count === 0 ) {
+                showSimpleToast('warning', 'No serial numbers to remove.');
+                return;
+            }
+
+            Swal.fire({
+                title           : 'Remove All Serial Numbers?',
+                html            : 'This will remove all <strong>' + count + '</strong> serial number(s) from the form.',
+                icon            : 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, Remove All',
+                cancelButtonText : 'Cancel',
+                customClass     : {
+                    confirmButton : 'btn btn-danger',
+                    cancelButton  : 'btn btn-light ms-2'
+                },
+                buttonsStyling  : false
+            }).then(function (result) {
+                if ( result.isConfirmed ) {
+                    $('#lsn_serial_numbers_container').empty();
+                    $('#lsn_no_sn_message').removeClass('d-none');
+                    _updateSerialNumberCount();
+                    _evaluateReplacementEligibility();
+                    showSimpleToast('success', 'All serial numbers removed.');
+                }
+            });
+        });
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // DATEPICKERS
@@ -650,6 +689,12 @@ var LSN = (function ($) {
                 }
                 if (!verified) {
                     errors.push({ field: 'Serial Number: ' + sn, error: 'Not verified. Please click Verify.' });
+                    snError = true;
+                    return;
+                }
+
+                if ( verified === 'allotted' ) {
+                    errors.push({ field: 'Serial Number: ' + sn, error: 'Already allotted to another customer. Cannot be linked again.' });
                     snError = true;
                     return;
                 }
@@ -813,6 +858,11 @@ var LSN = (function ($) {
 
             // Reset radio to default
             $('input[name="radio_customer_mode"][value="existing"]').prop('checked', true).trigger('change');
+            
+            // Clear and hide success summary, restore form
+            $('#lsn_success_summary').addClass('d-none').find('#lsn_success_detail').empty();
+            $('.card.card-bordered').removeClass('d-none');
+            $('#lsn_modal_footer').find('#btn_submit_link_sn, #btn_reset_link_sn_form').removeClass('d-none');
 
             _evaluateReplacementEligibility();
         });

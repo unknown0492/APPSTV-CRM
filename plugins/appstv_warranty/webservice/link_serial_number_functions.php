@@ -407,7 +407,17 @@ function appstv_link_serial_number_to_customer() {
 
         $e_psn_id = escape_string( $product_sn_id );
 
-        // ── 6b. Mark as allotted ───────────────────────────────────
+        // ── 6b. Guard — skip if already allotted ──────────────────────
+        $sql_allotted = "SELECT allotted_to_customer FROM product_sn WHERE product_sn_id = '$e_psn_id' LIMIT 1";
+        $res_allotted = selectQuery( $sql_allotted );
+        if ( $res_allotted && mysqli_num_rows( $res_allotted ) > 0 ) {
+            $row_allotted = mysqli_fetch_assoc( $res_allotted );
+            if ( intval( $row_allotted[ 'allotted_to_customer' ] ) === 1 ) {
+                continue;
+            }
+        }
+
+        // ── 6b. Mark as allotted ──────────────────────────────────────
         updateQuery( "UPDATE product_sn SET allotted_to_customer = 1 WHERE product_sn_id = '$e_psn_id'" );
 
         // ── 6c. Link invoice to product_sn ─────────────────────────
