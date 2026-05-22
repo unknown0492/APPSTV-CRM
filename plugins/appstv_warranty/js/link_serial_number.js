@@ -32,6 +32,11 @@ var LSN = (function ($) {
     // ─────────────────────────────────────────────────────────────────────
     // CUSTOMER TOGGLE
     // ─────────────────────────────────────────────────────────────────────
+    function _updateSerialNumberCount() {
+        var count = $('#lsn_serial_numbers_container .lsn-sn-row').length;
+        $('#lsn_sn_count_badge').text('(' + count + ')');
+    }
+    
     function _bindCustomerToggle() {
         $('input[name="radio_customer_mode"]').on('change', function () {
             var mode = $(this).val();
@@ -187,9 +192,12 @@ var LSN = (function ($) {
     // ─────────────────────────────────────────────────────────────────────
     // SERIAL NUMBER ROWS
     // ─────────────────────────────────────────────────────────────────────
+    
+
     function _bindAddSerialNumber() {
         $('#btn_add_serial_number').on('click', function () {
             _addSerialNumberRow('');
+            _updateSerialNumberCount();
         });
     }
 
@@ -229,7 +237,7 @@ var LSN = (function ($) {
             '<div class="lsn-sn-feedback mt-1" id="feedback_' + id + '"></div>'
         );
 
-        $('#lsn_serial_numbers_container').append($row);
+        $('#lsn_serial_numbers_container').prepend($row);
         $('#lsn_no_sn_message').addClass('d-none');
 
         _bindRowEvents($row, id);
@@ -244,6 +252,7 @@ var LSN = (function ($) {
         // Delete
         $row.find('.btn-delete-sn').on('click', function () {
             $row.remove();
+            _updateSerialNumberCount();
             if ($('#lsn_serial_numbers_container .lsn-sn-row').length === 0) {
                 $('#lsn_no_sn_message').removeClass('d-none');
             }
@@ -370,15 +379,46 @@ var LSN = (function ($) {
                         showSimpleToast('error', json ? json.info.message : 'Failed to read file.');
                         return;
                     }
+
                     var serials = json.info.data.serial_numbers || [];
                     if (serials.length === 0) {
                         showSimpleToast('warning', 'No serial numbers found in the file.');
                         return;
                     }
-                    $.each(serials, function (i, sn) {
-                        _addSerialNumberRow(sn);
+
+                    $.each(serials, function (i, item) {
+                        // Add the row with the serial number pre-filled
+                        _addSerialNumberRow(item.serial_number);
+
+                        // Find the row that was just added (last row in container)
+                        var $rows    = $('#lsn_serial_numbers_container .lsn-sn-row');
+                        var $lastRow = $rows.last();
+                        var rowId    = $lastRow.attr('id');
+                        var $input   = $lastRow.find('.lsn-sn-input');
+
+                        // Set verified attributes and feedback based on status
+                        if (item.status === 'unallotted') {
+                            $input.attr('data-verified', 'unallotted')
+                                  .attr('data-product-sn-id', item.product_sn_id);
+                            _setFeedback(rowId, 'success',
+                                'Serial Number exists &mdash; Product SN ID: <strong>' + _esc(item.product_sn_id) + '</strong>');
+
+                        } else if (item.status === 'allotted') {
+                            var customerLabel = item.company_name || item.customer_name || item.customer_id;
+                            $input.attr('data-verified', 'allotted')
+                                  .attr('data-customer-label', customerLabel);
+                            _setFeedback(rowId, 'error',
+                                'Serial Number has already been allotted to: <strong>' + _esc(customerLabel) + '</strong>');
+
+                        } else if (item.status === 'not_found') {
+                            $input.attr('data-verified', 'not_found');
+                            _setFeedback(rowId, 'error', 'Serial Number does not exist in the system.');
+                        }
                     });
-                    showSimpleToast('success', serials.length + ' serial number(s) imported from file.');
+
+                    _evaluateReplacementEligibility();
+                    _updateSerialNumberCount();
+                    showSimpleToast('success', serials.length + ' serial number(s) imported and verified.');
                 },
                 error: function () {
                     showSimpleToast('error', 'Failed to upload file.');
@@ -536,16 +576,16 @@ var LSN = (function ($) {
     // DATEPICKERS
     // ─────────────────────────────────────────────────────────────────────
     function _initDatepickers() {
-        // Init on modal show so they're rendered correctly inside modal
         $('#modal_link_serial_number').on('shown.bs.modal', function () {
             $('.lsn-datepicker').each(function () {
                 if (!$(this).data('datepicker-init')) {
-                    $(this).datepicker({
-                        format: 'yyyy-mm-dd',
-                        autoclose: true,
-                        todayHighlight: true,
-                        orientation: 'bottom auto',
-                        container: '#modal_link_serial_number'
+                    flatpickr(this, {
+                        dateFormat   : 'Y-m-d',
+                        altInput     : true,
+                        altFormat    : 'd-m-Y',
+                        allowInput   : false,
+                        disableMobile: true,
+                        appendTo     : document.getElementById('modal_link_serial_number')
                     });
                     $(this).data('datepicker-init', true);
                 }
@@ -743,11 +783,38 @@ var LSN = (function ($) {
     // RESET
     // ─────────────────────────────────────────────────────────────────────
     function _bindReset() {
-        $('#btn_reset_link_sn_form').on('click', _resetForm);
+        $('#btn_reset_link_sn, #modal_link_serial_number').on('hidden.bs.modal', function () {
+            // Reset form fields
+            $('#form_link_serial_number')[0].reset();
 
-        $('#modal_link_serial_number').on('hidden.bs.modal', function () {
-            AppStvScanSerial.stopCamera();
-            _resetForm();
+            // Clear flatpickr instances explicitly
+            $('.lsn-datepicker').each(function () {
+                var fp = this._flatpickr;
+                if (fp) {
+                    fp.clear();
+                }
+            });
+
+            // Clear serial number rows
+            $('#lsn_serial_numbers_container').empty();
+            $('#lsn_no_sn_message').removeClass('d-none');
+            _updateSerialNumberCount();
+
+            // Reset customer section
+            $('#lsn_selected_customer_badge').addClass('d-none');
+            $('#lsn_selected_customer_id').val('');
+            $('#lsn_customer_search').val('');
+            $('#lsn_customer_autocomplete').addClass('d-none').empty();
+
+            // Reset replacement section
+            $('#chk_enable_replacement').prop('checked', false);
+            $('#section_replacement_fields').addClass('d-none');
+            $('#lsn_replacement_sn_feedback').html('');
+
+            // Reset radio to default
+            $('input[name="radio_customer_mode"][value="existing"]').prop('checked', true).trigger('change');
+
+            _evaluateReplacementEligibility();
         });
     }
 

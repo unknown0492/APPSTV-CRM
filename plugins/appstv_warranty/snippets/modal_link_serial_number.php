@@ -29,7 +29,7 @@
                 <div class="card card-bordered mb-6">
                     <div class="card-header min-h-50px">
                         <h4 class="card-title">
-                            <i class="fa-solid fa-user me-2 text-primary"></i>Step 1 — Customer
+                            <i class="fa-solid fa-user me-2 text-primary"></i>Customer
                         </h4>
                     </div>
                     <div class="card-body pt-5">
@@ -124,7 +124,7 @@
                 <div class="card card-bordered mb-6">
                     <div class="card-header min-h-50px">
                         <h4 class="card-title">
-                            <i class="fa-solid fa-file-invoice me-2 text-primary"></i>Step 2 — Invoice
+                            <i class="fa-solid fa-file-invoice me-2 text-primary"></i>Invoice
                         </h4>
                     </div>
                     <div class="card-body pt-5">
@@ -152,7 +152,7 @@
                 <div class="card card-bordered mb-6">
                     <div class="card-header min-h-50px">
                         <h4 class="card-title">
-                            <i class="fa-solid fa-tv me-2 text-primary"></i>Step 3 — Product (TV Model)
+                            <i class="fa-solid fa-tv me-2 text-primary"></i>Product (TV Model)
                         </h4>
                     </div>
                     <div class="card-body pt-5">
@@ -183,7 +183,8 @@
                 <div class="card card-bordered mb-6">
                     <div class="card-header min-h-50px">
                         <h4 class="card-title">
-                            <i class="fa-solid fa-barcode me-2 text-primary"></i>Step 4 — Serial Numbers
+                            <i class="fa-solid fa-barcode me-2 text-primary"></i>Serial Numbers
+                            <span id="lsn_sn_count_badge" class="text-muted fs-7 ms-2">(0)</span>
                         </h4>
                         <div class="card-toolbar gap-2">
                             <!-- Browse Excel/CSV -->
@@ -198,16 +199,16 @@
                         </div>
                     </div>
                     <div class="card-body pt-4">
-
-                        <!-- Serial number rows container -->
-                        <div id="lsn_serial_numbers_container">
-                            <!-- Rows injected by JS -->
+                        <!-- Scrollable serial numbers area -->
+                        <div style="max-height: 600px; overflow-y: auto; padding-right: 4px;">
+                            <!-- Serial number rows container -->
+                            <div id="lsn_serial_numbers_container">
+                                <!-- Rows injected by JS -->
+                            </div>
+                            <div id="lsn_no_sn_message" class="text-center text-muted py-4">
+                                <i class="fa-solid fa-circle-info me-2"></i>No serial numbers added yet. Click <strong>Add Serial Number</strong> or <strong>Import from File</strong>.
+                            </div>
                         </div>
-
-                        <div id="lsn_no_sn_message" class="text-center text-muted py-4">
-                            <i class="fa-solid fa-circle-info me-2"></i>No serial numbers added yet. Click <strong>Add Serial Number</strong> or <strong>Import from File</strong>.
-                        </div>
-
                         <!-- Camera scan modal (inner) -->
                         <div id="lsn_scan_modal_overlay" class="lsn-scan-overlay d-none">
                             <div class="lsn-scan-box">
@@ -224,7 +225,6 @@
                                 </p>
                             </div>
                         </div>
-
                     </div>
                 </div>
 
@@ -234,7 +234,7 @@
                 <div class="card card-bordered mb-6">
                     <div class="card-header min-h-50px">
                         <h4 class="card-title">
-                            <i class="fa-solid fa-shield-halved me-2 text-primary"></i>Step 5 — Warranty
+                            <i class="fa-solid fa-shield-halved me-2 text-primary"></i>Warranty
                         </h4>
                     </div>
                     <div class="card-body pt-5">
@@ -269,7 +269,7 @@
                 <div class="card card-bordered mb-6" id="section_replacement_card">
                     <div class="card-header min-h-50px">
                         <h4 class="card-title">
-                            <i class="fa-solid fa-rotate me-2 text-primary"></i>Step 6 — Replacement / Service Event
+                            <i class="fa-solid fa-rotate me-2 text-primary"></i>Replacement / Service Event
                         </h4>
                         <div class="card-toolbar">
                             <div class="form-check form-switch form-check-custom form-check-solid">

@@ -183,3 +183,10 @@
     max-width: 480px;
     padding: 20px;
 }
+
+/* --- Link Serial Number modal step cards --- */
+#modal_link_serial_number .card.card-bordered {
+    border: 1px solid #d6d6d6 !important;
+    border-radius: 5px;
+}
+
