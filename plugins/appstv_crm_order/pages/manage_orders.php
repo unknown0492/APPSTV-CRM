@@ -1,3 +1,6 @@
+<?php
+checkAuthorizationForPage( 'manage_orders' );
+?>
 <?php 
     $rand = mt_rand();
 ?>

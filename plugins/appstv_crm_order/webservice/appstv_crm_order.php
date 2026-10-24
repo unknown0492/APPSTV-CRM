@@ -539,6 +539,7 @@ function update_prepare_order(){
  * This function is called by the CRON job every 12.10am and deletes all those order entries from prepare_delivery_order  table that were prepared but undelivered
  */
 function delete_prepared_but_undelivered_orders(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     require_once PLU_PATH . FILE_SEPARATOR . PLUGIN_NAME_CRON_MANAGEMENT . FILE_SEPARATOR . "includes" . FILE_SEPARATOR . "cron.php";
     
     display_php_errors();

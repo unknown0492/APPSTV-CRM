@@ -2,7 +2,7 @@
 
 // Check the availability of user_id
 function is_user_id_available() {
-    // checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
 
     $user_id = $_REQUEST['user_id'];
 
@@ -105,6 +105,7 @@ function create_user() {
 }
 
 function register_user() {
+    checkAuthorizationForFunction( __FUNCTION__ );
     $user_id = $_REQUEST['user_id'];
     $password = $_REQUEST['password'];
     $password_confirm = $_REQUEST['password_confirm'];
@@ -271,7 +272,7 @@ function update_user() {
 }
 
 function reset_password() {
-    //checkPrivilegeForFunction(__FUNCTION__);
+    checkAuthorizationForFunction( __FUNCTION__ );
 
     $user_id = $_REQUEST['user_id'];
     if (onlyAdminCan($user_id, false)) {
@@ -444,6 +445,7 @@ function edit_user_password() {
 }
 
 function reset_own_password() {
+    checkAuthorizationForFunction( __FUNCTION__ );
 
     if (!isForgotPasswordOptionEnabled()) {
         echo createJSONMessage(GENERAL_ERROR_MESSAGE, __FUNCTION__, "Forgot Password Option is Disabled in the Site Configuration !");
@@ -626,6 +628,7 @@ function reset_others_password(){
  * 
  */
 function change_reset_password() {
+    checkAuthorizationForFunction( __FUNCTION__ );
 
     if (!isForgotPasswordOptionEnabled()) {
         echo createJSONMessage(GENERAL_ERROR_MESSAGE, __FUNCTION__, "Forgot Password Option is Disabled in the Site Configuration !");

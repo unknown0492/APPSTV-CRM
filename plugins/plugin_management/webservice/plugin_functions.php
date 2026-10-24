@@ -214,7 +214,7 @@
 	}
 	
 	function delete_plugin_name(){
-		//checkPrivilegeForFunction( __FUNCTION__ );
+		checkAuthorizationForFunction( __FUNCTION__ );
 		$plugin_name = $_REQUEST['plugin_name'];
 		$sql="SELECT * FROM plugins WHERE plugin_name = '$plugin_name' ";
 		$result_set = selectQuery( $sql );

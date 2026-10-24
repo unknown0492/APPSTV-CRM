@@ -609,6 +609,7 @@ function shopify_webhook_response(){
  * A simulation of shopify_webhook_response without the headers and validation
  */
 function simulate_shopify_webhook_response(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     global $store_name, $store_url, $client_id, $client_secret, $api_version;
     
     display_php_errors();
@@ -1573,6 +1574,7 @@ function get_all_shopify_webhooks(){
 }
 
 function test_hmac(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     global $client_secret;
     
      

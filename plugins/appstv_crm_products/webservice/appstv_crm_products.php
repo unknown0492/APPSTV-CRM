@@ -54,6 +54,7 @@ function get_crm_products(){
 }
 
 function create_crm_product(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     //print_r( $_REQUEST );
     //print_r( $_FILES );
     /*
@@ -278,6 +279,7 @@ function create_crm_product(){
 }
 
 function get_crm_product_inventory(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     $source         = request( 'source' );
     $product_id     = request( 'product_id' );
     
@@ -430,6 +432,7 @@ function get_crm_product_inventory(){
 
 
 function update_crm_product_inventory(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     //display_php_errors();
     //print_r( $_REQUEST );
     $product_id                     = request( 'product_id' );
@@ -647,6 +650,7 @@ function update_crm_product_inventory(){
 }
 
 function create_product_serial_number(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     $multiple   = request( 'multiple' );          // Whether to create a single serial number or multiple serial numbers in the sequence. Possible values are 0 | 1
     $product_id = request( 'product_id' );        
     

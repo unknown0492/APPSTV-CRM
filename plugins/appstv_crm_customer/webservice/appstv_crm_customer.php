@@ -24,6 +24,7 @@ function create_customer_third_party(){
  * 
  */
 function create_customer(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     global $customerSources;
     print_r( $_REQUEST );
     

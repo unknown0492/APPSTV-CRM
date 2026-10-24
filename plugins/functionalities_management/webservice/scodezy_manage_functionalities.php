@@ -5,7 +5,7 @@ $functionality_types = array(
 );
 
 function scodezy_get_functionalities(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     $plugin_id = @$_REQUEST[ 'plugin_id' ];
     
@@ -49,7 +49,7 @@ function scodezy_get_functionalities(){
 }
 
 function scodezy_get_functionality(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     $functionality_id = request( 'functionality_id' );
     
@@ -76,7 +76,7 @@ function scodezy_get_functionality(){
 }
 
 function scodezy_get_page_functionalities(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     $plugin_id = @$_REQUEST[ 'plugin_id' ];
     
@@ -120,7 +120,7 @@ function scodezy_get_page_functionalities(){
 }
 
 function scodezy_delete_functionality(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     $functionality_id = request( 'functionality_id' );
     
@@ -155,7 +155,7 @@ function scodezy_delete_functionality(){
 }
 
 function scodezy_delete_functionalities(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     $functionality_ids = request( 'functionality_ids' );
     //print_r( $_REQUEST );
@@ -207,7 +207,7 @@ function scodezy_delete_functionalities(){
 }
 
 function scodezy_create_functionality(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     // print_r( $_REQUEST );
     // return;
@@ -286,7 +286,7 @@ function scodezy_create_functionality(){
 }
 
 function scodezy_update_functionality(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     global $functionality_types;
     //print_r( $_REQUEST );
@@ -377,7 +377,7 @@ function scodezy_update_functionality(){
 }
 
 function scodezy_import_functionalities(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     //print_r( $_REQUEST );
     
@@ -554,7 +554,7 @@ function scodezy_import_functionalities(){
 }
 
 function scodezy_export_functionalities(){
-    //checkPrivilegeForFunction( __FUNCTION__ );
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     $functionality_ids = request( 'functionality_ids' );
     

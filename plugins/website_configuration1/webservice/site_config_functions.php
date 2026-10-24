@@ -95,6 +95,7 @@
 	}
 	
 	function upload_logo_image(){
+		checkAuthorizationForFunction( __FUNCTION__ );
 		/* print_r( $_REQUEST );
 		print_r( $_FILES );
 		return;  */

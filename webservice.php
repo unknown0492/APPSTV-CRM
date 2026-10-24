@@ -34,15 +34,7 @@
     array_push( $webservice_fns, "scodezy_authenticate_app" );
     array_push( $webservice_fns, "install_shopify_app" );
     array_push( $webservice_fns, "shopify_webhook_response" );
-    array_push( $webservice_fns, "test_hmac" );
-    array_push( $webservice_fns, "simulate_shopify_webhook_response" );
-    array_push( $webservice_fns, "test_quickbooks_api" );
-    array_push( $webservice_fns, "callback_quickbooks_api" );
-    array_push( $webservice_fns, "authenticate_quickbooks_app" );
-    array_push( $webservice_fns, "generate_quickbooks_tokens" );
-    array_push( $webservice_fns, "test_quickbooks_api_call" );
     array_push( $webservice_fns, "refresh_tokens_before_they_expire_quickbooks" );
-    array_push( $webservice_fns, "test_sparse_update_invoice" );
     //array_push( $webservice_fns, "generate_shopify_app_token" );
     
     array_push( $special_fns, "login" );
@@ -57,15 +49,7 @@
     array_push( $special_fns, "scodezy_authenticate_app" );
     array_push( $special_fns, "install_shopify_app" );
     array_push( $special_fns, "shopify_webhook_response" );
-    array_push( $special_fns, "test_hmac" );
-    array_push( $special_fns, "simulate_shopify_webhook_response" );
-    array_push( $special_fns, "test_quickbooks_api" );
-    array_push( $special_fns, "callback_quickbooks_api" );
-    array_push( $special_fns, "authenticate_quickbooks_app" );
-    array_push( $special_fns, "generate_quickbooks_tokens" );
-    array_push( $special_fns, "test_quickbooks_api_call" );
     array_push( $special_fns, "refresh_tokens_before_they_expire_quickbooks" );
-    array_push( $special_fns, "test_sparse_update_invoice" );
     //array_push( $special_fns, "generate_shopify_app_token" );
 
     $pluginsDirPath = PLU_PATH . "/";
@@ -138,7 +122,7 @@
     if( ( $what_do_you_want == '' ) || ( $what_do_you_want == NULL ) ){
         echo createJSONMessage( GENERAL_ERROR_MESSAGE, "webservice", "Webservice does not perform such an action, Sorry !!" );
     }
-    else if( in_array( $what_do_you_want, $webservice_fns ) ){
+    else if( in_array( $what_do_you_want, $webservice_fns ) && isWebserviceFunction( $what_do_you_want ) ){
         $what_do_you_want();
     }
     else{
@@ -146,6 +130,35 @@
     }
 	
     
+    /**
+     * @description Whether a requested name may be run as a webservice action: it must be a PHP function written
+     *              in this file or in a plugin's webservice folder. Stops a name added to the functionalities table
+     *              (e.g. phpinfo) from running a built-in or library function (1.0.1).
+     * @param string $function_name - The requested what_do_you_want
+     * @returns bool true if it is a webservice function
+     */
+    function isWebserviceFunction( $function_name ){
+        if( !function_exists( $function_name ) ){
+            return false;
+        }
+
+        $reflection = new ReflectionFunction( $function_name );
+        if( !$reflection->isUserDefined() ){
+            return false;
+        }
+
+        $file           = str_replace( '\\', '/', realpath( $reflection->getFileName() ) );    // File the function is written in
+        $this_file      = str_replace( '\\', '/', realpath( __FILE__ ) );                     // webservice.php itself
+        $plugins_path   = rtrim( str_replace( '\\', '/', realpath( PLU_PATH ) ), '/' ) . '/';   // Plugins folder
+
+        if( $file === $this_file ){
+            return true;
+        }
+        // Only plugins/<plugin>/webservice/<file>.php - the files loaded at the top of this script
+        return ( strpos( $file, $plugins_path ) === 0 )
+            && ( preg_match( '#^[^/]+/webservice/[^/]+\.php$#', substr( $file, strlen( $plugins_path ) ) ) === 1 );
+    }
+
     /* 1 */
     function login(){
         $user_id        = $_REQUEST[ 'user_id' ];

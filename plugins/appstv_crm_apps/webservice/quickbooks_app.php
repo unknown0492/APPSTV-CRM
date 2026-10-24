@@ -14,13 +14,16 @@ use QuickBooksOnline\API\Facades\Invoice;
 
 
 /**
- * Call this function in the URL through webservice.php
- * This function has been bypassed in the webservice.php file so it can be accessed without the AccessToken and Authorization
- * 
- * This function will redirect to another function named
+ * Call this function in the URL through webservice.php while signed in as Administrator
+ * (webservice.php?what_do_you_want=authenticate_quickbooks_app). Since 1.0.1 it needs the sign-in token and the
+ * role grant - it is no longer public. Intuit then redirects the same browser (cookie included) to
+ * generate_quickbooks_tokens, which needs the same sign-in.
+ *
+ * This function will redirect to another function named generate_quickbooks_tokens
  * 
  */
 function authenticate_quickbooks_app(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     // Procedure: https://developer.intuit.com/app/developer/qbo/docs/develop/sdks-and-samples-collections/php
     
     $config = include( QUICKBOOKS_KEYS_PATH );
@@ -46,6 +49,7 @@ function authenticate_quickbooks_app(){
 
 
 function generate_quickbooks_tokens(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     $config = include( QUICKBOOKS_KEYS_PATH );
     
     $dataService = DataService::Configure(array(
@@ -82,6 +86,7 @@ function generate_quickbooks_tokens(){
 
 
 function test_quickbooks_api_call(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     
     //display_php_errors();
     /*
@@ -200,6 +205,7 @@ function refresh_tokens_before_they_expire_quickbooks(){
 }
 
 function test_sparse_update_invoice(){
+    checkAuthorizationForFunction( __FUNCTION__ );
     $dataService = getQuickBooksDataService();
     
     $invoiceObj = QuickBooksOnline\API\Facades\Invoice::create([

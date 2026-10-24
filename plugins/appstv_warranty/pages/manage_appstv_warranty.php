@@ -1,3 +1,6 @@
+<?php
+checkAuthorizationForPage( 'manage_appstv_warranty' );
+?>
 <link href="assets/plugins/custom/datatables/datatables.bundle.css" rel="stylesheet" type="text/css"/>
 <link href="plugins/<?=$plugin_name ?>/css/<?=basename( __FILE__, ".php" ) ?>.css" rel="stylesheet" type="text/css"/>
 
