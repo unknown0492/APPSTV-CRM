@@ -31,6 +31,8 @@
     array_push( $webservice_fns, "scodezy_sign_out" );
     array_push( $webservice_fns, "scodezy_get_new_access_token" );
     array_push( $webservice_fns, "scodezy_verify_self_email_update" );
+    array_push( $webservice_fns, "scodezy_forgot_password" );                  // Public: Forgot Password page (1.0.8)
+    array_push( $webservice_fns, "scodezy_update_password_on_reset_page" );    // Public: Password Reset page (1.0.8)
     array_push( $webservice_fns, "scodezy_authenticate_app" );
     array_push( $webservice_fns, "install_shopify_app" );
     array_push( $webservice_fns, "shopify_webhook_response" );
@@ -46,6 +48,8 @@
     array_push( $special_fns, "scodezy_sign_out" );
     array_push( $special_fns, "scodezy_get_new_access_token" );
     array_push( $special_fns, "scodezy_verify_self_email_update" );
+    array_push( $special_fns, "scodezy_forgot_password" );                     // No sign-in needed (1.0.8)
+    array_push( $special_fns, "scodezy_update_password_on_reset_page" );       // No sign-in needed (1.0.8)
     array_push( $special_fns, "scodezy_authenticate_app" );
     array_push( $special_fns, "install_shopify_app" );
     array_push( $special_fns, "shopify_webhook_response" );

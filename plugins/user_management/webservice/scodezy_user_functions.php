@@ -432,13 +432,13 @@ function scodezy_reset_user_password(){
      */
 
     if ( $password_reset_code === "") {
-        $password_reset_code        = sha1( $current_time );
+        $password_reset_code        = bin2hex( random_bytes( 20 ) );    // Random, not guessable from the time (1.0.8)
         $password_reset_expiry      = $current_time;
     } 
     else{
         if ( isPasswordResetValidityExpired( $current_time, $password_reset_expiry ) ) {
             // create new reset code and current time as interval
-            $password_reset_code        = sha1( $current_time );
+            $password_reset_code        = bin2hex( random_bytes( 20 ) );    // Random, not guessable from the time (1.0.8)
             $password_reset_expiry      = $current_time;
         }
     }

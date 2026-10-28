@@ -3,6 +3,8 @@ session_start();
 
 require './load-all.php';
 
+$site_config = getSiteConfig();                  // Site name for the title (1.0.8)
+
 if( !isForgotPasswordOptionEnabled() ) {
     redirect(PAGE_NAME_LOGIN . WEBSITE_LINK_ENDS_WITH);
     exit();
@@ -15,6 +17,12 @@ if( !isset( $_GET[ 'code' ] ) ){
 }
 
 $password_reset_code = @$_GET[ 'code' ];
+
+// A used / cleared code is empty in the users table: an empty or short code must never match (1.0.8)
+if( !is_string( $password_reset_code ) || !preg_match( '/^[A-Za-z0-9]{20,100}$/', $password_reset_code ) ){
+    redirect( PAGE_NAME_LOGIN . WEBSITE_LINK_ENDS_WITH );
+    exit();
+}
 
 $e_password_reset_code = escape_string( $password_reset_code );
 
@@ -83,10 +91,10 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
                 <!-- Begin:: Logo Section -->
                 <div class="d-flex flex-center w-lg-50 pt-15 pt-lg-0 px-10">
                     <div class="d-flex flex-center flex-lg-start flex-column">
-                        <a href="index.html" class="mb-7">
-                            <img alt="Logo" src="assets/scodezy/media/login/custom-3.svg" />
+                        <a href="" class="mb-7">
+                            <?php include INC_PATH . '/login-page-logo.php'; ?>
                         </a>
-                        <h2 class="text-white fw-normal m-0">Build web applications seamlessly with sCodezy</h2>                        
+                        <?php include INC_PATH . '/system-descriptive-string.php'; ?>
                     </div>
                 </div>
                 <!-- End:: Logo Section -->
@@ -158,7 +166,7 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
 
                         <!--begin::Footer-->
                         <div class="text-center">
-                            2024 © sCodezy by <a href="https://silentcoders.net" target="_blank">Silent Coders</a>
+                            <?php include INC_PATH . "/copyright-string.php"; ?>
                         </div>
                         <!--end::Footer-->
                     </div>
@@ -182,7 +190,7 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
         <!--end::Global Javascript Bundle-->
         
         <!--begin::Custom Javascript(used for this page only)-->
-        <script src="assets/scodezy/js/login/password-reset.js"></script>
+        <script src="assets/scodezy/js/login/password-reset.js?v=<?= @filemtime( __DIR__ . '/assets/scodezy/js/login/password-reset.js' ) ?>"></script>
         <!-- <script src="assets/js/custom/authentication/sign-in/general.js"></script> -->
         <!--end::Custom Javascript-->
         

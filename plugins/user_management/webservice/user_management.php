@@ -288,13 +288,13 @@ function scodezy_forgot_password(){
      */
 
     if ( $password_reset_code === "") {
-        $password_reset_code        = sha1( $current_time );
+        $password_reset_code        = bin2hex( random_bytes( 20 ) );    // Random, not guessable from the time (1.0.8)
         $password_reset_expiry      = $current_time;
     } 
     else{
         if ( isPasswordResetValidityExpired( $current_time, $password_reset_expiry ) ) {
             // create new reset code and current time as interval
-            $password_reset_code        = sha1( $current_time );
+            $password_reset_code        = bin2hex( random_bytes( 20 ) );    // Random, not guessable from the time (1.0.8)
             $password_reset_expiry      = $current_time;
         }
     }
@@ -427,7 +427,13 @@ function scodezy_update_password_on_reset_page(){
     }
     
     @session_start();
-    $password_reset_code = $_SESSION[ 'code' ];
+    $password_reset_code = isset( $_SESSION[ 'code' ] ) ? (string) $_SESSION[ 'code' ] : '';
+
+    // An empty / short code would match every account whose code was cleared (1.0.8)
+    if( !preg_match( '/^[A-Za-z0-9]{20,100}$/', $password_reset_code ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "The password reset link is not valid. Please ask for a new one." );
+        return;
+    }
     
     $e_password_reset_code = escape_string( $password_reset_code );
     

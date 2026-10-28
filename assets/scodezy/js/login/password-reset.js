@@ -66,14 +66,15 @@ function initUpdatePasswordButton(){
                 jSon = jSon[ 0 ];
 
                 if( jSon[ 'type' ] == 'error' ){
-                    if( jSon[ 'info' ] instanceof object ){
-                        var data = jSon[ 'info' ];
-                        showActionSweetAlert( data.info, "error", "Okay", "btn btn-primary", function(){
-                            redirect( data.url );
+                    var info = jSon[ 'info' ];                                  // Text, or { info, url } / { message } (1.0.8)
+                    if( info !== null && typeof info === 'object' && info.url ){
+                        showActionSweetAlert( info.info, "error", false, "Okay", "btn btn-primary", function(){
+                            redirect( info.url );
                         });
                     }
-                    else{                    
-                        showSimpleSweetAlert( jSon[ 'info' ], "error", "Try Again", "btn btn-primary" );
+                    else{
+                        var text = ( info !== null && typeof info === 'object' ) ? ( info.info || info.message || 'The password could not be updated.' ) : info;
+                        showSimpleSweetAlert( text, "error", "Try Again", "btn btn-primary" );
                     }
                     return;
                 }
@@ -81,7 +82,7 @@ function initUpdatePasswordButton(){
 
                     var data = jSon[ 'info' ];
                     
-                    showActionSweetAlert( data.info, "success", "Okay", "btn btn-primary", function(){
+                    showActionSweetAlert( data.info, "success", false, "Okay", "btn btn-primary", function(){
                         redirect( data.url );
                     });
                     
