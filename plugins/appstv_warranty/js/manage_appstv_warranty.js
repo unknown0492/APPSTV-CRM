@@ -199,6 +199,169 @@ var WarrantyCheck = (function () {
 
         _sendImageToServer( file, file.name );
     }
+    // ── Warranty results (v1.0.4) ──────────────────────────────────
+
+    /**
+     * @description Escapes text for safe use inside the results HTML
+     * @param {*} value - Any value from the server
+     * @returns {string} HTML-safe text, or an em dash when empty
+     */
+    function _esc( value ) {
+        if ( value === null || value === undefined || value === '' ) { return '—'; }
+        return $( '<div>' ).text( String( value ) ).html();
+    }
+
+    /**
+     * @description Returns the badge class for a warranty status
+     * @param {string} status - Active, Active (Extended), Expired or No Warranty Found
+     * @returns {string} CSS classes
+     */
+    function _statusClass( status ) {
+        if ( status === 'Active' || status === 'Active (Extended)' ) { return 'badge badge-light-success'; }
+        if ( status === 'Expired' ) { return 'badge badge-light-danger'; }
+        return 'badge badge-light-warning';
+    }
+
+    /**
+     * @description Builds one table row
+     * @param {string} label - Left column text
+     * @param {string} valueHtml - Right column HTML (already escaped)
+     * @returns {string} Row HTML
+     */
+    function _row( label, valueHtml ) {
+        return '<tr><td class="fw-bold text-gray-600 w-40">' + label + '</td><td>' + valueHtml + '</td></tr>';
+    }
+
+    /**
+     * @description Formats a serial number in the monospace style used on this page
+     * @param {string} serial - Serial number
+     * @returns {string} HTML
+     */
+    function _serialHtml( serial ) {
+        return '<span class="warranty-serial">' + _esc( serial ) + '</span>';
+    }
+
+    /**
+     * @description Describes a sale (customer, invoice no. and date) on one line
+     * @param {object|null} sale - company_name, first_name, last_name, invoice_no, invoice_date
+     * @returns {string} HTML
+     */
+    function _saleHtml( sale ) {
+        if ( !sale ) { return '—'; }
+        var name = sale.company_name || ( ( sale.first_name || '' ) + ' ' + ( sale.last_name || '' ) ).trim();   // Company, else person
+        return '<span class="fw-bold">' + _esc( name ) + '</span><br />Invoice ' + _esc( sale.invoice_no ) + ' &middot; ' + _formatDate( sale.invoice_date );
+    }
+
+    /**
+     * @description Builds the service history (all events, oldest first) of one warranty
+     * @param {Array} events - Service events from the server
+     * @returns {string} HTML
+     */
+    function _eventsHtml( events ) {
+        if ( !events || events.length === 0 ) {
+            return '<div class="text-gray-500 fs-7">No service events</div>';
+        }
+        var html = '<ol class="warranty-events">';   // Service events in date order
+        $.each( events, function ( i, ev ) {
+            var isReplacement = ev.type === 'replacement';   // A new TV was given
+            html += '<li class="' + ( ev.is_scanned_tv ? 'warranty-event-scanned' : '' ) + '">';
+            html += '<div class="fw-bold">' + _formatDate( ev.date_of_service ) + ' &middot; '
+                  + ( isReplacement ? '<span class="text-warning">Replaced</span>' : '<span class="text-primary">Repaired</span>' ) + '</div>';
+            if ( isReplacement ) {
+                html += '<div>New TV: ' + _serialHtml( ev.new_serial_number )
+                      + ( ev.new_product_title ? ' <span class="text-gray-600">(' + _esc( ev.new_product_title ) + ')</span>' : '' )
+                      + ( ev.is_scanned_tv ? ' <span class="badge badge-light-primary">this TV</span>' : '' ) + '</div>';
+            }
+            if ( ev.new_invoice_no ) {
+                html += '<div>Service invoice: ' + _esc( ev.new_invoice_no ) + '</div>';
+            }
+            html += '<div class="text-gray-700">' + _esc( ev.remarks ) + '</div>';
+            html += '</li>';
+        } );
+        return html + '</ol>';
+    }
+
+    /**
+     * @description Builds one warranty history: original TV, sale, warranty, extended warranty, status and events
+     * @param {object} history - One entry of record.histories
+     * @returns {string} HTML
+     */
+    function _historyHtml( history ) {
+        var title = history.role === 'original'
+            ? 'Warranty of this TV'
+            : 'Given as a replacement under the warranty of TV ' + _esc( history.original_serial_number );   // Heading of this history
+        var html  = '<div class="warranty-history mt-4">';
+        html += '<div class="warranty-history-title">' + title + '</div>';
+        html += '<table class="table table-bordered table-row-dashed fs-7 gy-2 gx-3 mb-2"><tbody>';
+        html += _row( 'Warranty Status', '<span class="' + _statusClass( history.warranty_status ) + ' fs-7 fw-bold">' + _esc( history.warranty_status ) + '</span>' );
+        if ( history.role !== 'original' ) {
+            html += _row( 'Original TV', _serialHtml( history.original_serial_number ) + '<br />' + _esc( history.original_product_title ) );
+        }
+        html += _row( 'Sold To', _saleHtml( history.original_sale ) );
+        html += _row( 'Warranty', _formatDate( history.warranty_start_date ) + ' to ' + _formatDate( history.warranty_expiry ) );
+        if ( history.extended_warranty ) {
+            html += _row( 'Extended Warranty', _formatDate( history.extended_warranty.start_date ) + ' to ' + _formatDate( history.extended_warranty.expiry_date ) );
+        }
+        if ( history.events && history.events.length > 0 ) {
+            html += _row( 'TV In Service Now', _serialHtml( history.current_serial_number ) );
+        }
+        html += _row( 'Remarks', _esc( history.remarks ) );
+        html += '</tbody></table>';
+        html += '<div class="fw-bold text-gray-700 fs-7 mb-1">Service History</div>';
+        html += _eventsHtml( history.events );
+        return html + '</div>';
+    }
+
+    /**
+     * @description Shows every TV found for the serial number, each with its full warranty history
+     * @param {object} info - Server reply: total_records and data (one record per TV)
+     * @returns {void}
+     */
+    function _showWarrantyResults( info ) {
+        var data  = info[ 'data' ];            // One record per TV with this serial number
+        var total = info[ 'total_records' ];   // Number of TVs
+        var html  = '';
+
+        if ( total > 1 ) {
+            html += '<div class="alert alert-light-warning fs-7 py-2">' + total + ' TVs carry this serial number. Each is shown separately.</div>';
+        }
+
+        $.each( data, function ( i, record ) {
+            html += '<div class="warranty-record-card mb-6">';
+            html += '<table class="table table-bordered table-row-dashed fs-7 gy-2 gx-3 mb-0"><tbody>';
+            html += _row( 'Serial Number', _serialHtml( record.serial_number ) );
+            html += _row( 'Product', _esc( record.product_title ) );
+            html += _row( 'Sold To', _saleHtml( record.sale ) );
+            html += '</tbody></table>';
+
+            if ( !record.histories || record.histories.length === 0 ) {
+                html += '<div class="mt-3"><span class="badge badge-light-warning fs-7 fw-bold">No Warranty Found</span></div>';
+            }
+            $.each( record.histories || [], function ( j, history ) {
+                html += _historyHtml( history );
+            } );
+            html += '</div>';
+
+            if ( i < data.length - 1 ) {
+                html += '<div class="warranty-or-separator my-4"><span class="warranty-or-line"></span><span class="warranty-or-text">TV ' + ( i + 2 ) + '</span><span class="warranty-or-line"></span></div>';
+            }
+        } );
+
+        // Show results in a SweetAlert with scrollable content
+        Swal.fire( {
+            title             : total + ' Record' + ( total > 1 ? 's' : '' ) + ' Found',
+            html              : html,
+            icon              : 'success',
+            confirmButtonText : 'Close',
+            width             : '680px',
+            heightAuto        : false,
+            customClass       : {
+                confirmButton : 'btn btn-primary',
+                popup         : 'swal-warranty-popup'
+            }
+        } );
+    }
+
     // ── Submit (AJAX placeholder) ──────────────────────────────────
 
     function _submitSerialNumber() {
@@ -237,66 +400,7 @@ var WarrantyCheck = (function () {
                 }
 
                 if ( jSon[ 'type' ] == 'success' ) {
-                    var info    = jSon[ 'info' ];
-                    var data    = info[ 'data' ];
-                    var total   = info[ 'total_records' ];
-
-                    var html = '';
-
-                    $.each( data, function ( i, record ) {
-
-                        var statusClass = record.warranty_status === 'Active'
-                            ? 'badge badge-light-success'
-                            : record.warranty_status === 'Expired'
-                                ? 'badge badge-light-danger'
-                                : 'badge badge-light-warning';
-
-                        html += '<div class="warranty-record-card mb-6">';
-                        html += '<table class="table table-bordered table-row-dashed fs-7 gy-2 gx-3">';
-                        html += '<tbody>';
-                        html += '<tr><td class="fw-bold text-gray-600 w-40">Company</td><td class="fw-bold fs-6">' + ( record.company_name || '—' ) + '</td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Customer Name</td><td>' + ( ( record.first_name || '' ) + ' ' + ( record.last_name || '' ) ).trim() + '</td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Warranty Status</td><td><span class="' + statusClass + ' fs-7 fw-bold">' + record.warranty_status + '</span></td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Serial Number</td><td><span style="font-family: monospace; font-size: 1.15rem; letter-spacing: 0.35rem; font-weight: 600;">' + ( record.serial_number || '—' ) + '</span></td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Product Title</td><td>' + ( record.product_title || '—' ) + '</td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Product Name</td><td>' + ( record.product_name  || '—' ) + '</td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Invoice No.</td><td>' + ( record.invoice_no   || '—' ) + '</td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Invoice Date</td><td>' + _formatDate( record.invoice_date ) + '</td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Warranty Start</td><td>' + _formatDate( record.warranty_start_date ) + '</td></tr>';
-                        html += '<tr><td class="fw-bold text-gray-600">Warranty Expiry</td><td>' + _formatDate( record.warranty_expiry ) + '</td></tr>';html += '<tr><td class="fw-bold text-gray-600">Remarks</td><td>' + ( record.remarks || '—' ) + '</td></tr>';
-                        if ( record.replacement ) {
-                            var rep = record.replacement;
-                            html += '<tr><td colspan="2" class="fw-bold text-warning fs-7 pt-4">⚠️ Warranty Replacement Record</td></tr>';
-                            html += '<tr><td class="fw-bold text-gray-600">Date of Service</td><td>' + _formatDate( rep.date_of_service ) + '</td></tr>';
-                            html += '<tr><td class="fw-bold text-gray-600">New Serial Number</td><td><span style="font-family: monospace; font-size: 1.15rem; letter-spacing: 0.35rem; font-weight: 600;">' + ( rep.new_serial_number || '—' ) + '</span></td></tr>';
-                            html += '<tr><td class="fw-bold text-gray-600">New Invoice No.</td><td>' + ( rep.new_invoice_no || '—' ) + '</td></tr>';
-                            html += '<tr><td class="fw-bold text-gray-600">Repairable</td><td>' + ( rep.is_repairable == 1 ? 'Yes' : 'No' ) + '</td></tr>';
-                            html += '<tr><td class="fw-bold text-gray-600">Replacement Remarks</td><td>' + ( rep.remarks || '—' ) + '</td></tr>';
-                        }
-                        html += '</tbody></table>';
-                        html += '</div>';
-
-                        if ( i < data.length - 1 ) {
-                            html += '<div class="warranty-or-separator my-4"><span class="warranty-or-line"></span><span class="warranty-or-text">RECORD ' + ( i + 2 ) + '</span><span class="warranty-or-line"></span></div>';
-                        }
-                    } );
-
-                    // Show results in a SweetAlert with scrollable content
-                    Swal.fire( {
-                        title              : total + ' Record' + ( total > 1 ? 's' : '' ) + ' Found',
-                        html               : html,
-                        icon               : 'success',
-                        confirmButtonText  : 'Close',
-                        confirmButtonClass : 'btn btn-primary',
-                        customClass        : { confirmButton: 'btn btn-primary' },
-                        width              : '640px',
-                        heightAuto         : false,
-                        customClass        : {
-                            confirmButton : 'btn btn-primary',
-                            popup         : 'swal-warranty-popup'
-                        }
-                    } );
-
+                    _showWarrantyResults( jSon[ 'info' ] );
                     return;
                 }
             }

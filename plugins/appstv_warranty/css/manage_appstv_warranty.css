@@ -190,3 +190,47 @@
     border-radius: 5px;
 }
 
+
+
+/* ── Warranty history in the results (v1.0.4) ─────────────────── */
+
+/* Serial numbers in the results */
+.warranty-serial {
+    font-family: monospace;
+    font-size: 1.05rem;
+    letter-spacing: 0.2rem;
+    font-weight: 600;
+}
+
+/* One warranty history (own warranty, or given as a replacement) */
+.warranty-history {
+    border-left: 3px solid #009ef7;
+    padding-left: 12px;
+    text-align: left;
+}
+
+.warranty-history-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+    color: #181c32;
+}
+
+/* Service events, oldest first */
+.warranty-events {
+    padding-left: 18px;
+    margin-bottom: 0;
+    font-size: 0.85rem;
+    text-align: left;
+}
+
+.warranty-events li {
+    margin-bottom: 8px;
+}
+
+/* The event in which the scanned TV was given out */
+.warranty-events li.warranty-event-scanned {
+    background: #f1faff;
+    border-radius: 4px;
+    padding: 4px 6px;
+}

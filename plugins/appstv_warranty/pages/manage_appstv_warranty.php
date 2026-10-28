@@ -2,7 +2,7 @@
 checkAuthorizationForPage( 'manage_appstv_warranty' );
 ?>
 <link href="assets/plugins/custom/datatables/datatables.bundle.css" rel="stylesheet" type="text/css"/>
-<link href="plugins/<?=$plugin_name ?>/css/<?=basename( __FILE__, ".php" ) ?>.css" rel="stylesheet" type="text/css"/>
+<link href="plugins/<?=$plugin_name ?>/css/<?=basename( __FILE__, ".php" ) ?>.css?v=<?= @filemtime( dirname( __DIR__ ) . '/css/' . basename( __FILE__, ".php" ) . '.css' ) ?>" rel="stylesheet" type="text/css"/>
 
 <!-- ZXing for QR/Barcode scanning -->
 <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
@@ -149,5 +149,5 @@ checkAuthorizationForPage( 'manage_appstv_warranty' );
 
 
 <!-- BEGIN PAGE LEVEL SCRIPTS -->
-<script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js"></script>
+<script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js?v=<?= @filemtime( dirname( __DIR__ ) . '/js/' . basename( __FILE__, ".php" ) . '.js' ) ?>"></script>
 <!-- END PAGE LEVEL SCRIPTS -->
