@@ -1,14 +1,138 @@
 var session_check_interval = "";
 $( document ).ready(function(){
     // console.log( 'inside sessions' );
-    
+
     startSessionCheck();
-    
-    
-    
+
+    SessionSync.init();
+
 });
 
+/**
+ * Keeps the session popup in step across all open tabs of the same browser.
+ * The token cookie is shared by every tab, but each tab runs its own popup countdown, so a tab
+ * that extends or ends the session tells the others through a localStorage "storage" event
+ * (fired in every other tab of the same origin, never in the sender).
+ */
+var SessionSync = {
+
+    KEY: 'scodezy_session_sync',    // localStorage key the tabs signal each other through
+    popupOpen: false,               // True while this tab shows the extend / sign out popup
+
+    /**
+     * @description Listens for signals from the other tabs
+     * @returns {void}
+     */
+    init: function(){
+        $( window ).on( 'storage', function( e ){
+            SessionSync.onSignal( e.originalEvent );
+        });
+    },
+
+    /**
+     * @description Tells the other tabs that the session was extended or ended
+     * @param {string} event - 'extended' or 'signed_out'
+     * @param {string} login_url - Login page the other tabs go to on 'signed_out'
+     * @returns {void}
+     */
+    publish: function( event, login_url ){
+        var signal = {
+            event: event,
+            login_url: login_url || 'login.php',
+            at: new Date().getTime()        // Makes every signal a new value, so the event always fires
+        };
+        try {
+            localStorage.setItem( SessionSync.KEY, JSON.stringify( signal ) );
+        } catch( err ){
+            // Storage blocked: the other tabs fall back to the server check before signing out
+        }
+    },
+
+    /**
+     * @description Acts on a signal from another tab
+     * @param {StorageEvent} oe - The native storage event
+     * @returns {void}
+     */
+    onSignal: function( oe ){
+        if( !oe || oe.key !== SessionSync.KEY || !oe.newValue ){
+            return;
+        }
+
+        var signal = null;  // Parsed signal
+        try {
+            signal = JSON.parse( oe.newValue );
+        } catch( err ){
+            return;
+        }
+
+        if( signal.event === 'extended' ){
+            // Close this tab's popup and start counting again from the new token
+            if( SessionSync.popupOpen ){
+                SessionSync.closePopup();
+                showSimpleToast( "success", "Session has been extended in another tab" );
+            }
+            startSessionCheck();
+        }
+        else if( signal.event === 'signed_out' ){
+            clearInterval( session_check_interval );
+            SessionSync.closePopup();
+            redirect( signal.login_url );
+        }
+    },
+
+    /**
+     * @description Closes the session popup of this tab, if it is open
+     * @returns {void}
+     */
+    closePopup: function(){
+        if( SessionSync.popupOpen ){
+            SessionSync.popupOpen = false;
+            Swal.close();
+        }
+    },
+
+    /**
+     * @description Called when this tab's countdown runs out. Asks the server first, because another
+     *              tab may have extended the session without this tab hearing of it (e.g. a sleeping tab).
+     *              Signs out only if the session really is about to end.
+     * @returns {void}
+     */
+    confirmExpiry: function(){
+        $.ajax({
+            url: getWebservice(),
+            type: 'POST',
+            data: { what_do_you_want: 'scodezy_validate_user_session' },
+            success: function( returned_data ){
+                var jSon = parseJSONWithError( returned_data, "Server Side error occurred ! Contact Technical Support..." );
+                if( jSon == false ){
+                    sign_out();
+                    return;
+                }
+
+                jSon = jSon[ 0 ];
+                var data = jSon[ 'info' ];  // session_status: 0 = ended, 1 = ending soon, 2 = active
+
+                if( jSon[ 'type' ] == 'success' && data.session_status == "2" ){
+                    startSessionCheck();        // Extended elsewhere, carry on
+                    return;
+                }
+                if( jSon[ 'type' ] == 'success' && data.session_status == "0" ){
+                    SessionSync.publish( 'signed_out', data.login_url );
+                    redirect( data.login_url );
+                    return;
+                }
+
+                sign_out();
+            },
+            error: function(){
+                sign_out();
+            }
+        });
+    }
+};
+
 function startSessionCheck(){
+    clearInterval( session_check_interval );    // Never run two checks side by side
     session_check_interval = setInterval( function(){
         send_request_to_validate_session();
     }, 60000 );
@@ -54,7 +178,8 @@ function send_request_to_validate_session(){
                 }
                 else if( data.session_status == "1" ){      // Seek confirmation for extension of the session
                     clearInterval( session_check_interval );
-                    
+
+                    SessionSync.popupOpen = true;
                     Swal.fire({
                         icon: "question",
                         allowOutsideClick: false,
@@ -77,12 +202,16 @@ function send_request_to_validate_session(){
                             }, 1000);
                           },
                         willClose: () => {
+                            clearInterval( timerInterval );     // Stop the seconds display
                             //redirect( data.login_url );
                             //startSessionCheck();
                         }
                     }).then(( result ) => {
+                        SessionSync.popupOpen = false;
+
                         if (result.dismiss === Swal.DismissReason.timer) { // When the timer ends
-                            sign_out();
+                            // Another tab may have extended the session, so ask the server before signing out
+                            SessionSync.confirmExpiry();
                         }
                         else if ( result.isConfirmed ) {
                             //console.log( 'confirmed' );
@@ -136,11 +265,13 @@ function sign_out(){
             if( jSon[ 'type' ] == 'success' ){
 
                 var data = jSon[ 'info' ];
-                
+
+                SessionSync.publish( 'signed_out', data.login_url );   // Sign out the other tabs too
+
                 setTimeout( function(){
                     redirect( data.login_url );
                 }, 1000 );
-                
+
                 return;
             }
         }
@@ -184,7 +315,9 @@ function scodezy_sign_out(){
                 
                 // Clear the RTN
                 removeDataFromLocalStorage( RTN );
-                
+
+                SessionSync.publish( 'signed_out', data.login_url );   // Sign out the other tabs too
+
                 showSimpleSweetAlert( data.info, "success", "", "" );
                 setTimeout(function(){
                     redirect( data.login_url );
@@ -237,6 +370,8 @@ function extend_session(){
                 // Update the RTN
                 removeDataFromLocalStorage( RTN );                  // Delete old refresh token
                 storeDataIntoLocalStorage( RTN, data[ RTN ] );      // Store new refresh token
+
+                SessionSync.publish( 'extended' );                  // Close the popup on the other tabs
                 /*
                 showSimpleSweetAlert( data.info, "success", "", "" );
                 setTimeout(function(){
