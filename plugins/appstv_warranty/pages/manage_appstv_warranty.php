@@ -4,10 +4,10 @@ checkAuthorizationForPage( 'manage_appstv_warranty' );
 <link href="assets/plugins/custom/datatables/datatables.bundle.css" rel="stylesheet" type="text/css"/>
 <link href="plugins/<?=$plugin_name ?>/css/<?=basename( __FILE__, ".php" ) ?>.css?v=<?= @filemtime( dirname( __DIR__ ) . '/css/' . basename( __FILE__, ".php" ) . '.css' ) ?>" rel="stylesheet" type="text/css"/>
 
-<!-- ZXing for QR/Barcode scanning -->
-<script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+<!-- Shared camera scanner (v1.0.6): browser BarcodeDetector, or ZXing pinned to 0.21.3 -->
+<link href="assets/appstv/css/appstv_scanner.css?v=<?= @filemtime( dirname( __DIR__, 3 ) . '/assets/appstv/css/appstv_scanner.css' ) ?>" rel="stylesheet" type="text/css"/>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="assets/appstv/js/appstv_scanner.js?v=<?= @filemtime( dirname( __DIR__, 3 ) . '/assets/appstv/js/appstv_scanner.js' ) ?>"></script>
 
 <!--begin::Post-->
 <div class="post d-flex flex-column-fluid" id="kt_post">
@@ -69,35 +69,10 @@ checkAuthorizationForPage( 'manage_appstv_warranty' );
                 <div class="warranty-option">
                     <div class="warranty-option-label">Scan QR / Barcode</div>
 
-                    <!-- Auto Capture Checkbox -->
-                    <div class="form-check form-check-custom form-check-solid form-check-sm mb-4">
-                        <input class="form-check-input" type="checkbox" id="chk_auto_capture" checked />
-                        <label class="form-check-label text-gray-600 fs-6" for="chk_auto_capture">
-                            Auto Capture (detects QR/Barcode automatically)
-                        </label>
-                    </div>
-
-                    <!-- Camera Preview -->
-                    <div id="div_camera_container" class="camera-container d-none">
-                        <video id="video_camera_preview" class="camera-preview" autoplay muted playsinline></video>
-                        <canvas id="canvas_capture" class="d-none"></canvas>
-                        <div id="div_scan_overlay" class="scan-overlay">
-                            <div class="scan-line"></div>
-                        </div>
-                    </div>
-
-                    <div class="d-flex gap-3 mt-3">
-                        <button type="button" class="btn btn-sm btn-light-primary w-100" id="btn_start_scan">
-                            <i class="ki-duotone ki-camera fs-4 me-1"><span class="path1"></span><span class="path2"></span></i>
-                            Scan
-                        </button>
-                        <button type="button" class="btn btn-sm btn-primary w-100 d-none" id="btn_capture">
-                            Capture
-                        </button>
-                        <button type="button" class="btn btn-sm btn-light-danger w-100 d-none" id="btn_stop_scan">
-                            Stop
-                        </button>
-                    </div>
+                    <button type="button" class="btn btn-sm btn-light-primary w-100" id="btn_start_scan">
+                        <i class="ki-duotone ki-camera fs-4 me-1"><span class="path1"></span><span class="path2"></span></i>
+                        Scan with camera
+                    </button>
                 </div>
 
                 <!-- OR Separator -->

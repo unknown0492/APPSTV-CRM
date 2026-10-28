@@ -7,22 +7,11 @@
 
 var WarrantyCheck = (function () {
 
-    // ── Private state ──────────────────────────────────────────────
-    var _codeReader     = null;   // ZXing reader instance
-    var _activeStream   = null;   // MediaStream (camera)
-    var _isScanning     = false;
-
     // ── DOM refs ───────────────────────────────────────────────────
     var _modal              = document.getElementById( 'modal_check_warranty_status' );
     var _btnOpenModal       = document.getElementById( 'btn_open_check_warranty_modal' );
     var _btnCloseModal      = document.getElementById( 'btn_close_warranty_modal' );
     var _btnStartScan       = document.getElementById( 'btn_start_scan' );
-    var _btnCapture         = document.getElementById( 'btn_capture' );
-    var _btnStopScan        = document.getElementById( 'btn_stop_scan' );
-    var _chkAutoCapture     = document.getElementById( 'chk_auto_capture' );
-    var _divCamera          = document.getElementById( 'div_camera_container' );
-    var _videoPreview       = document.getElementById( 'video_camera_preview' );
-    var _canvasCapture      = document.getElementById( 'canvas_capture' );
     var _inputBrowse        = document.getElementById( 'input_browse_image' );
     var _btnBrowse          = document.getElementById( 'btn_browse_image' );
     var _divBrowsedFilename = document.getElementById( 'div_browsed_filename' );
@@ -31,162 +20,21 @@ var WarrantyCheck = (function () {
 
     // ── Helpers ────────────────────────────────────────────────────
 
-    function _stopCamera() {
-        _isScanning = false;
-
-        if ( _codeReader ) {
-            if ( _codeReader && _codeReader._stopLoop ) { _codeReader._stopLoop(); }
-            _codeReader = null;
-        }
-
-        if ( _activeStream ) {
-            _activeStream.getTracks().forEach( function ( track ) { track.stop(); } );
-            _activeStream = null;
-        }
-
-        _videoPreview.srcObject = null;
-
-        _divCamera.classList.add( 'd-none' );
-        _btnCapture.classList.add( 'd-none' );
-        _btnStopScan.classList.add( 'd-none' );
-        _btnStartScan.classList.remove( 'd-none' );
-    }
-
-    // ── Replace _onCodeDetected() ──────────────────────────────────────────────
- 
-    function _onCodeDetected( blob ) {
-        _stopCamera();
-        _sendImageToServer( blob, 'scan_capture.png' );
-    }
-    
-   
-
-    function _startAutoScan() {
-        var _detected   = false;
-        var _loopActive = true;
-
-        if ( _codeReader ) { _codeReader = null; }
-        _codeReader = { _stopLoop: function () { _loopActive = false; } };
-
-        function _scanFrame() {
-            if ( !_loopActive || _detected ) { return; }
-
-            if ( _videoPreview.readyState === _videoPreview.HAVE_ENOUGH_DATA ) {
-                _canvasCapture.width  = _videoPreview.videoWidth;
-                _canvasCapture.height = _videoPreview.videoHeight;
-                var ctx = _canvasCapture.getContext( '2d', { willReadFrequently: true } );
-                ctx.drawImage( _videoPreview, 0, 0 );
-
-                var imageData = ctx.getImageData( 0, 0, _canvasCapture.width, _canvasCapture.height );
-
-                // Try jsQR first
-                var qrResult = jsQR( imageData.data, _canvasCapture.width, _canvasCapture.height, {
-                    inversionAttempts: 'attemptBoth'
-                } );
-
-                if ( qrResult && !_detected ) {
-                    _detected   = true;
-                    _loopActive = false;
-                    _canvasCapture.toBlob( function ( blob ) {
-                        _stopCamera();
-                        _sendImageToServer( blob, 'scan_auto.png' );
-                    }, 'image/png' );
-                    return;
-                }
-
-                // Try Quagga every 10 frames for barcodes
-                _scanFrame._frameCount = ( _scanFrame._frameCount || 0 ) + 1;
-                if ( _scanFrame._frameCount % 10 === 0 && !_detected ) {
-                    var dataUrl = _canvasCapture.toDataURL( 'image/png' );
-                    Quagga.decodeSingle( {
-                        decoder : {
-                            readers  : [ 'code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader', 'code_93_reader', 'upc_reader', 'upc_e_reader' ],
-                            multiple : false
-                        },
-                        locate : true,
-                        src    : dataUrl
-                    }, function ( result ) {
-                        if ( result && result.codeResult && !_detected ) {
-                            _detected   = true;
-                            _loopActive = false;
-                            _canvasCapture.toBlob( function ( blob ) {
-                                _stopCamera();
-                                _sendImageToServer( blob, 'scan_auto.png' );
-                            }, 'image/png' );
-                        }
-                    } );
-                }
+    /**
+     * @description Opens the shared camera scanner (v1.0.6); the serial number read is looked up straight away
+     * @returns {void}
+     */
+    function _openScanner() {
+        AppstvScanner.open( {
+            title      : 'Scan the serial number',
+            continuous : false,
+            onScan     : function ( serial ) {
+                _inputManual.value = serial;
+                _submitSerialNumber();
             }
-
-            requestAnimationFrame( _scanFrame );
-        }
-
-        requestAnimationFrame( _scanFrame );
+        } );
     }
 
-    function _startManualScan() {
-        // Camera is already running via getUserMedia; user clicks Capture manually
-    }
-
-    // ── Camera Start ───────────────────────────────────────────────
-
-    function _startCamera() {
-        if ( _isScanning ) { return; }
-        _isScanning = true;
-
-        var constraints = { video: { facingMode: 'environment' }, audio: false };
-
-        navigator.mediaDevices.getUserMedia( constraints )
-            .then( function ( stream ) {
-                _activeStream           = stream;
-                _videoPreview.srcObject = stream;
-
-                _divCamera.classList.remove( 'd-none' );
-                _btnStartScan.classList.add( 'd-none' );
-                _btnStopScan.classList.remove( 'd-none' );
-
-                // Wait for video to be ready before starting ZXing
-                _videoPreview.onloadedmetadata = function () {
-                    _videoPreview.play().then( function () {
-                        if ( _chkAutoCapture.checked ) {
-                            _startAutoScan();
-                        } else {
-                            _btnCapture.classList.remove( 'd-none' );
-                        }
-                    } ).catch( function ( err ) {
-                        _isScanning = false;
-                        alert( 'Could not start video playback: ' + err.message );
-                    } );
-                };
-            } )
-            .catch( function ( err ) {
-                _isScanning = false;
-                if ( err.name === 'NotAllowedError' ) {
-                    alert( 'Camera permission was denied. Please allow camera access in your browser settings.' );
-                } else if ( err.name === 'NotFoundError' ) {
-                    alert( 'No camera found on this device.' );
-                } else if ( location.protocol !== 'https:' && location.hostname !== 'localhost' ) {
-                    alert( 'Camera requires a secure connection (HTTPS). Please access this page via HTTPS or localhost.' );
-                } else {
-                    alert( 'Camera error: ' + err.message );
-                }
-            } );
-    }
-
-    // ── Replace _captureSnapshot() ────────────────────────────────────────────
- 
-    function _captureSnapshot() {
-        _canvasCapture.width  = _videoPreview.videoWidth;
-        _canvasCapture.height = _videoPreview.videoHeight;
-        var ctx = _canvasCapture.getContext( '2d', { willReadFrequently: true } );
-        ctx.drawImage( _videoPreview, 0, 0 );
-
-        _canvasCapture.toBlob( function ( blob ) {
-            _stopCamera();
-            _sendImageToServer( blob, 'scan_capture.png' );
-        }, 'image/png' );
-    }
-    
     // ── Browse ─────────────────────────────────────────────────────
 
     // ── Replace _handleBrowsedFile() ──────────────────────────────────────────
@@ -411,12 +259,10 @@ var WarrantyCheck = (function () {
     // ── Reset modal state ──────────────────────────────────────────
 
     function _resetModal() {
-        _stopCamera();
         _inputManual.value = '';
         _inputBrowse.value = '';
         _divBrowsedFilename.classList.add( 'd-none' );
         _divBrowsedFilename.textContent = '';
-        _divCamera.classList.remove( 'scan-success' );
     }
 
     // ── Event Bindings ─────────────────────────────────────────────
@@ -471,30 +317,9 @@ var WarrantyCheck = (function () {
             _resetModal();
         } );
 
-        // Start Scan button
+        // Scan button: shared camera scanner
         _btnStartScan.addEventListener( 'click', function () {
-            _startCamera();
-        } );
-
-        // Stop Scan button
-        _btnStopScan.addEventListener( 'click', function () {
-            _stopCamera();
-        } );
-
-        // Capture button (manual mode) - touchend for Android, click for desktop
-        _btnCapture.addEventListener( 'click', function () {
-            _captureSnapshot();
-        } );
-        _btnCapture.addEventListener( 'touchend', function ( e ) {
-            e.preventDefault();
-            _captureSnapshot();
-        } );
-        // Auto-capture checkbox toggle: if camera is running, switch modes
-        _chkAutoCapture.addEventListener( 'change', function () {
-            if ( _isScanning ) {
-                _stopCamera();
-                _startCamera();
-            }
+            _openScanner();
         } );
 
         // Browse button

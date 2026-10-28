@@ -1,0 +1,114 @@
+/* =============================================
+   appstv_scanner.css (v1.0.6)
+   Full-screen camera scanner shared by the APPSTV pages (see appstv_scanner.js)
+   ============================================= */
+
+body.appstv-scanner-open { overflow: hidden; }
+
+.appstv-scanner-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;                                             /* Above Bootstrap modals (1055) and SweetAlert (1060) */
+    background: #0b0b14;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+}
+
+.appstv-scanner-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+}
+
+.appstv-scanner-title { font-size: 1.05rem; font-weight: 600; }
+.appstv-scanner-x { color: #fff !important; }
+
+.appstv-scanner-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.appstv-scanner-stage video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Aiming frame in the middle of the picture */
+.appstv-scanner-frame {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 30%;
+    bottom: 30%;
+    max-width: 640px;
+    margin: 0 auto;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    border-radius: 10px;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+
+.appstv-scanner-line {
+    position: absolute;
+    left: 6%;
+    width: 88%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #009ef7, transparent);
+    box-shadow: 0 0 6px #009ef7;
+    animation: appstvScanMove 2s linear infinite;
+}
+
+@keyframes appstvScanMove {
+    0%   { top: 8%; }
+    50%  { top: 90%; }
+    100% { top: 8%; }
+}
+
+.appstv-scanner-frame.flash-ok    { animation: appstvFlashOk 0.45s ease; }
+.appstv-scanner-frame.flash-error { animation: appstvFlashError 0.45s ease; }
+
+@keyframes appstvFlashOk    { 0%, 100% { border-color: rgba(255, 255, 255, 0.85); } 30% { border-color: #50cd89; border-width: 5px; } }
+@keyframes appstvFlashError { 0%, 100% { border-color: rgba(255, 255, 255, 0.85); } 30% { border-color: #f1416c; border-width: 5px; } }
+
+.appstv-scanner-bottom {
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.appstv-scanner-status { min-height: 1.4em; font-size: 0.95rem; color: #cfd2e0; text-align: center; }
+.appstv-scanner-status.is-ok    { color: #50cd89; }
+.appstv-scanner-status.is-error { color: #ff7a93; }
+
+.appstv-scanner-last {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    min-height: 1.6em;
+}
+
+.appstv-scanner-last span {
+    font-family: monospace;
+    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 2px 8px;
+}
+
+.appstv-scanner-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.appstv-scanner-buttons .btn { min-width: 110px; }
+.appstv-scanner-buttons .btn.active { background: #ffc700 !important; color: #181c32 !important; }
