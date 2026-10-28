@@ -1,7 +1,0 @@
-{
-  "symbol-whitelist" : [
-    "apcu_enabled",
-    "apcu_fetch",
-    "apcu_store"
-  ]
-}

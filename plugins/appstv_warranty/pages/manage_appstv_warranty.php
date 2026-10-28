@@ -30,11 +30,7 @@ checkAuthorizationForPage( 'manage_appstv_warranty' );
                                 data-bs-target="#modal_check_warranty_status">
                             Check Warranty Status
                         </button>
-                        <button type="button" class="btn btn-success rounded ms-3" data-bs-toggle="modal" data-bs-target="#modal_link_serial_number">
-                            <i class="fa-solid fa-link me-2"></i>Link Serial Number to Customer
-                        </button>
                     </div>
-                    
                 </div>
                 <!--end::Card Toolbar-->
             </div>
@@ -151,11 +147,7 @@ checkAuthorizationForPage( 'manage_appstv_warranty' );
 </div>
 <!-- Modal - Check Warranty Status ENDS -->
 
-<?php include PLU_PATH . '/appstv_warranty/snippets/modal_link_serial_number.php'; ?>
-
 
 <!-- BEGIN PAGE LEVEL SCRIPTS -->
 <script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js"></script>
-<script src="plugins/appstv_warranty/js/appstv_scan_serial.js"></script>
-<script src="plugins/appstv_warranty/js/link_serial_number.js"></script>
 <!-- END PAGE LEVEL SCRIPTS -->

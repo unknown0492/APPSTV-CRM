@@ -10,3 +10,16 @@ plugins/appstv_crm_apps/data
 plugins/appstv_crm_customer/data
 plugins/appstv_crm_order/data
 plugins/appstv_crm_products/data
+
+# Per-server files, never in git (v1.0.3): live settings / secrets, cPanel PHP handler and ini, logs
+/configurations/config.php
+/configurations/email_config.php
+/.htaccess
+/php.ini
+/.user.ini
+error_log
+/import-log-*.json
+
+# Composer libraries are installed per server (live has full installs that differ from the old tracked copies)
+/library/*/vendor/
+/library/*/composer.lock
