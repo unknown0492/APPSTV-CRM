@@ -7,6 +7,8 @@
 
 var WarrantyCheck = (function () {
 
+    var _lastRecords = [];                // TVs of the last results (for the service actions, v1.0.7)
+
     // ── DOM refs ───────────────────────────────────────────────────
     var _modal              = document.getElementById( 'modal_check_warranty_status' );
     var _btnOpenModal       = document.getElementById( 'btn_open_check_warranty_modal' );
@@ -165,8 +167,33 @@ var WarrantyCheck = (function () {
      * @param {object} info - Server reply: total_records and data (one record per TV)
      * @returns {void}
      */
+    /**
+     * @description Buttons of the service actions under one TV of the results (v1.0.7)
+     * @param {object} record - One TV of appstv_read_sn_info
+     * @param {number} index - Its position in the results
+     * @returns {string} HTML
+     */
+    function _actionsHtml( record, index ) {
+        var html = '<div class="d-flex flex-wrap gap-2 mt-3">'
+                 + '<a class="btn btn-sm btn-light-primary" href="adminpanel.php?what_do_you_want=service_cases&new_case_tv=' + encodeURIComponent( record.product_sn_id ) + '">'
+                 + '<i class="fa-solid fa-folder-plus"></i> Open case</a>';
+        if ( record.histories && record.histories.length > 0 ) {
+            var last = record.histories[ record.histories.length - 1 ];   // Warranty the TV is served under now
+            if ( last.current_serial_number === record.serial_number ) {   // A TV already replaced takes no more service
+                html += '<button type="button" class="btn btn-sm btn-primary" data-wa-action="service" data-wa-index="' + index + '"><i class="fa-solid fa-screwdriver-wrench"></i> Record service</button>';
+            } else {
+                html += '<span class="badge badge-light-warning align-self-center">Replaced by ' + _esc( last.current_serial_number ) + '</span>';
+            }
+            if ( !last.extended_warranty && last.warranty_expiry ) {
+                html += '<button type="button" class="btn btn-sm btn-light-success" data-wa-action="extend" data-wa-index="' + index + '"><i class="fa-solid fa-shield-halved"></i> Extended warranty</button>';
+            }
+        }
+        return html + '</div>';
+    }
+
     function _showWarrantyResults( info ) {
         var data  = info[ 'data' ];            // One record per TV with this serial number
+        _lastRecords = data;
         var total = info[ 'total_records' ];   // Number of TVs
         var html  = '';
 
@@ -181,6 +208,7 @@ var WarrantyCheck = (function () {
             html += _row( 'Product', _esc( record.product_title ) );
             html += _row( 'Sold To', _saleHtml( record.sale ) );
             html += '</tbody></table>';
+            html += _actionsHtml( record, i );
 
             if ( !record.histories || record.histories.length === 0 ) {
                 html += '<div class="mt-3"><span class="badge badge-light-warning fs-7 fw-bold">No Warranty Found</span></div>';
@@ -315,6 +343,19 @@ var WarrantyCheck = (function () {
         // Also stop camera if modal is closed via backdrop/ESC
         _modal.addEventListener( 'hidden.bs.modal', function () {
             _resetModal();
+        } );
+
+        // Service actions under a TV of the results (v1.0.7); the results are shown again afterwards
+        $( document ).on( 'click', '[data-wa-action]', function () {
+            var record = _lastRecords[ +$( this ).attr( 'data-wa-index' ) ];
+            var last = record.histories[ record.histories.length - 1 ];
+            var tv = { product_sn_id: record.product_sn_id, serial_number: record.serial_number, product_id: record.product_id,
+                       product_name: record.product_title || record.product_name, warranty_expiry: last ? last.warranty_expiry : null };
+            if ( $( this ).attr( 'data-wa-action' ) === 'service' ) {
+                AppstvServiceForms.recordService( tv, _submitSerialNumber, _submitSerialNumber );
+            } else {
+                AppstvServiceForms.addExtended( tv, _submitSerialNumber, _submitSerialNumber );
+            }
         } );
 
         // Scan button: shared camera scanner

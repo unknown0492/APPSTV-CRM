@@ -8,6 +8,18 @@ checkAuthorizationForPage( 'manage_appstv_warranty' );
 <link href="assets/appstv/css/appstv_scanner.css?v=<?= @filemtime( dirname( __DIR__, 3 ) . '/assets/appstv/css/appstv_scanner.css' ) ?>" rel="stylesheet" type="text/css"/>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script src="assets/appstv/js/appstv_scanner.js?v=<?= @filemtime( dirname( __DIR__, 3 ) . '/assets/appstv/js/appstv_scanner.js' ) ?>"></script>
+<!-- Service actions on a found TV (v1.0.7): Record service, Add extended warranty -->
+<?php
+$wa_products = array();                                         // Models for the replacement list of Record service
+$wa_result = selectQuery( "SELECT product_id, name, sku, has_sn FROM products WHERE physical_product = 1 ORDER BY has_sn DESC, name ASC" );
+while( ( $wa_row = mysqli_fetch_assoc( $wa_result ) ) !== null ){
+    $wa_products[] = array( 'product_id' => $wa_row[ 'product_id' ], 'name' => $wa_row[ 'name' ], 'sku' => $wa_row[ 'sku' ], 'has_sn' => (int) $wa_row[ 'has_sn' ] );
+}
+?>
+<script>
+    var APPSTV_PRODUCTS = <?= json_encode( $wa_products, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ) ?>;
+</script>
+<script src="assets/appstv/js/appstv_service_forms.js?v=<?= @filemtime( dirname( __DIR__, 3 ) . '/assets/appstv/js/appstv_service_forms.js' ) ?>"></script>
 
 <!--begin::Post-->
 <div class="post d-flex flex-column-fluid" id="kt_post">

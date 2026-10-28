@@ -150,6 +150,8 @@ function appstv_read_sn_info() {
         } );
 
         $records[] = array(
+            'product_sn_id' => $product_sn_id,                  // For the service actions (v1.0.7)
+            'product_id'    => $product_sn[ 'product_id' ],      // Default model of a replacement TV (v1.0.7)
             'product_title' => $product_sn[ 'product_title' ],
             'product_name'  => $product_sn[ 'product_name' ],
             'serial_number' => $product_sn[ 'serial_number' ],

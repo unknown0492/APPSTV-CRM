@@ -1,0 +1,86 @@
+/* =============================================
+   service_cases.css (v1.0.7)
+   Plugin: appstv_warranty - Service Cases page (phone and PC)
+   ============================================= */
+
+/* Summary chips */
+.sc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.sc-chip {
+    border: 1px solid transparent;
+    border-radius: 0.65rem;
+    padding: 8px 14px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    background: #f5f8fa;
+    color: #3f4254;
+}
+.sc-chip-n { font-size: 1.15rem; font-weight: 700; margin-right: 4px; }
+.sc-chip-danger  { background: #fff5f8; color: #f1416c; border-color: #f1416c33; }
+.sc-chip-warning { background: #fff8dd; color: #b5850b; border-color: #ffc70055; }
+.sc-chip-primary { background: #f1faff; color: #009ef7; border-color: #009ef733; }
+.sc-chip-info    { background: #f8f5ff; color: #7239ea; border-color: #7239ea33; }
+.sc-chip.is-zero { opacity: 0.55; }
+
+/* Case cards */
+.sc-card {
+    background: #fff;
+    border: 1px solid #eff2f5;
+    border-left: 4px solid #e4e6ef;
+    border-radius: 0.65rem;
+    padding: 14px 16px;
+    height: 100%;
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+}
+.sc-card:hover { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08); }
+.sc-card.sc-due-overdue  { border-left-color: #f1416c; }
+.sc-card.sc-due-today    { border-left-color: #ffc700; }
+.sc-card.sc-due-upcoming { border-left-color: #009ef7; }
+.sc-card-problem {
+    margin-top: 6px;
+    color: #5e6278;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Customer search (new case) */
+.sc-dropdown {
+    position: absolute; left: 0; right: 0; z-index: 60; margin-top: 4px; max-height: 300px; overflow-y: auto;
+    background: #fff; border: 1px solid #e4e6ef; border-radius: 0.475rem; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+}
+.sc-dropdown-item { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f4f4f6; }
+.sc-dropdown-item:hover { background: #f1faff; }
+.sc-dropdown-empty { padding: 12px 14px; color: #7e8299; }
+.sc-selected {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 14px; border: 1px dashed #009ef7; border-radius: 0.475rem; background: #f1faff;
+}
+
+/* TVs in the new case form */
+.sc-found-tv, .sc-new-tv {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 12px; border: 1px solid #eff2f5; border-radius: 0.475rem; margin-bottom: 6px;
+}
+.sc-new-tv.is-warning { background: #fff8dd; }
+
+/* Case details */
+.sc-section { margin-bottom: 20px; }
+.sc-section-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a5b7; margin-bottom: 8px; }
+.sc-pre { white-space: pre-wrap; word-break: break-word; }
+.sc-tv { border: 1px solid #eff2f5; border-radius: 0.65rem; padding: 12px 14px; margin-bottom: 10px; }
+.sc-tv-events { margin-top: 6px; font-size: 0.82rem; color: #5e6278; }
+
+/* Timeline */
+.sc-timeline { max-height: 520px; overflow-y: auto; }
+.sc-tl-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed #eff2f5; }
+.sc-tl-icon {
+    flex: 0 0 28px; height: 28px; border-radius: 50%; background: #f5f8fa; color: #7e8299;
+    display: flex; align-items: center; justify-content: center; font-size: 0.8rem;
+}
+.sc-tl-note .sc-tl-icon    { background: #f1faff; color: #009ef7; }
+.sc-tl-service .sc-tl-icon { background: #e8fff3; color: #50cd89; }
+.sc-tl-close .sc-tl-icon   { background: #e8fff3; color: #50cd89; }
+.sc-tl-body { flex: 1; min-width: 0; }
