@@ -4,6 +4,7 @@ session_start();
 require './load-all.php';
 
 $site_config = getSiteConfig();                  // Site name for the title (1.0.8)
+$signin = siteSigninPage( 'reset' );             // Texts / logo of this page: Website Configuration (1.0.58)
 
 /**
  * @description An expired / used link: shows the message, then opens the login page. Done in the browser because the
@@ -64,7 +65,7 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
 <html lang="en">
     <!--begin::Head-->
     <head>
-        <title>Password Reset | <?=$site_config->site_name ?></title>
+        <title><?= htmlspecialchars( $signin[ 'title' ] ) ?> | <?= htmlspecialchars( $site_config->site_name ) ?></title>
         <meta charset="utf-8" />
 
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -84,11 +85,15 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
         <link href="assets/scodezy/css/password-reset.css" rel="stylesheet" type="text/css" />
         <!--end::Page Level Stylesheets-->
 
+        <?php siteSigninHead(); ?>
+        
     </head>
     <!--end::Head-->
     
     <!--begin::Body-->
     <body id="" class="auth-bg bgi-size-cover bgi-attachment-fixed bgi-position-center bgi-no-repeat">
+        <!-- The canvas you see -->
+        <?php siteSigninBodyTop(); ?>
         <!--begin::Theme mode setup on page load-->
         <!-- <script>var defaultThemeMode = "light"; var themeMode; if ( document.documentElement ) { if ( document.documentElement.hasAttribute("data-bs-theme-mode")) { themeMode = document.documentElement.getAttribute("data-bs-theme-mode"); } else { if ( localStorage.getItem("data-bs-theme") !== null ) { themeMode = localStorage.getItem("data-bs-theme"); } else { themeMode = defaultThemeMode; } } if (themeMode === "system") { themeMode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; } document.documentElement.setAttribute("data-bs-theme", themeMode); }</script> -->
         <!--end::Theme mode setup on page load-->
@@ -120,8 +125,9 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
                             <form class="form w-100" id="form_password_reset" name="form_password_reset" method="POST" data-parsley-validate>
                                 <!--begin::Heading-->
                                 <div class="text-center mb-11">
-                                    <h1 class="text-gray-900 fw-bolder mb-3">Password Reset</h1>
-                                    <div class="text-gray-500 fw-semibold fs-6">Set a new password of your choice</div>
+                                    <h1 class="text-gray-900 fw-bolder mb-3"><?= htmlspecialchars( $signin[ 'heading' ] ) ?></h1>
+                                    <div class="text-gray-500 fw-semibold fs-6"><?= htmlspecialchars( $signin[ 'subheading' ] ) ?></div>
+                                    <?php siteSigninMaintenanceNotice(); ?>
                                 </div>
                                 <!--end::Heading-->
 
@@ -176,7 +182,8 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
 
                         <!--begin::Footer-->
                         <div class="text-center">
-                            <?php include INC_PATH . "/copyright-string.php"; ?>
+                            <?php siteSupportLine(); ?>
+                            <span class="site-copyright"><?php include INC_PATH . "/copyright-string.php"; ?></span>
                         </div>
                         <!--end::Footer-->
                     </div>
@@ -203,6 +210,8 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
         <script src="assets/scodezy/js/login/password-reset.js?v=<?= @filemtime( __DIR__ . '/assets/scodezy/js/login/password-reset.js' ) ?>"></script>
         <!-- <script src="assets/js/custom/authentication/sign-in/general.js"></script> -->
         <!--end::Custom Javascript-->
+        
+        <?php siteSigninBodyBottom(); ?>
         
         <!--end::Javascript-->
     </body>

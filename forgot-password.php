@@ -11,12 +11,13 @@ if ( !isForgotPasswordOptionEnabled() ) {
 }
 
 $site_config = getSiteConfig();
+$signin = siteSigninPage( 'forgot' );             // Texts / logo of this page: Website Configuration (1.0.58)
 ?>
 
 <html lang="en">
     <!--begin::Head-->
     <head>
-        <title>Forgot Password | <?=$site_config->site_name ?></title>
+        <title><?= htmlspecialchars( $signin[ 'title' ] ) ?> | <?= htmlspecialchars( $site_config->site_name ) ?></title>
         <meta charset="utf-8" />
 
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -41,11 +42,14 @@ $site_config = getSiteConfig();
         <link href="assets/scodezy/css/forgot-password.css" rel="stylesheet" type="text/css" />
         <!--end::Page Level Stylesheets-->
 
+        <?php siteSigninHead(); ?>
     </head>
     <!--end::Head-->
     
     <!--begin::Body-->
     <body id="kt_body" class="auth-bg bgi-size-cover bgi-attachment-fixed bgi-position-center bgi-no-repeat">
+        <!-- The canvas you see -->
+        <?php siteSigninBodyTop(); ?>
         <!--begin::Theme mode setup on page load-->
         <!-- <script>var defaultThemeMode = "light"; var themeMode; if ( document.documentElement ) { if ( document.documentElement.hasAttribute("data-bs-theme-mode")) { themeMode = document.documentElement.getAttribute("data-bs-theme-mode"); } else { if ( localStorage.getItem("data-bs-theme") !== null ) { themeMode = localStorage.getItem("data-bs-theme"); } else { themeMode = defaultThemeMode; } } if (themeMode === "system") { themeMode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; } document.documentElement.setAttribute("data-bs-theme", themeMode); }</script> -->
         <!--end::Theme mode setup on page load-->
@@ -81,8 +85,9 @@ $site_config = getSiteConfig();
                             <form class="form w-100" id="form_forgot_password" name="form_forgot_password" method="POST" data-parsley-validate>
                                 <!--begin::Heading-->
                                 <div class="text-center mb-11">
-                                    <h1 class="text-gray-900 fw-bolder mb-3">Forgot Password ?</h1>
-                                    <div class="text-gray-500 fw-semibold fs-6">Enter your User ID to reset your password.</div>
+                                    <h1 class="text-gray-900 fw-bolder mb-3"><?= htmlspecialchars( $signin[ 'heading' ] ) ?></h1>
+                                    <div class="text-gray-500 fw-semibold fs-6"><?= htmlspecialchars( $signin[ 'subheading' ] ) ?></div>
+                                    <?php siteSigninMaintenanceNotice(); ?>
                                 </div>
                                 <!--end::Heading-->
                                 
@@ -130,7 +135,8 @@ $site_config = getSiteConfig();
 
                         <!--begin::Footer-->
                         <div class="text-center">
-                            <?php include INC_PATH . "/copyright-string.php"; ?>
+                            <?php siteSupportLine(); ?>
+                            <span class="site-copyright"><?php include INC_PATH . "/copyright-string.php"; ?></span>
                         </div>
                         <!--end::Footer-->
                     </div>
@@ -157,6 +163,8 @@ $site_config = getSiteConfig();
         <!--begin::Custom Javascript(used for this page only)-->
         <script src="assets/scodezy/js/login/forgot-password.js"></script>
         <!--end::Custom Javascript-->
+        
+        <?php siteSigninBodyBottom(); ?>
         
         <!--end::Javascript-->
     </body>

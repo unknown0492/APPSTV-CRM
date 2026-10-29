@@ -1,0 +1,100 @@
+/* =============================================
+   website_configuration.css (Scodezy base feature, gen3 1.0.56) - Administrator > Website Configuration
+   ============================================= */
+
+/* A setting with its on/off switch on the right */
+.wc-switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px dashed #eff2f5;
+}
+.wc-switch-row:last-of-type { border-bottom: 0; }
+
+/* Logos & favicon: preview box + path + buttons */
+.wc-image {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px dashed #eff2f5;
+}
+.wc-image:last-child { border-bottom: 0; }
+.wc-image-preview {
+    flex: 0 0 120px;
+    height: 64px;
+    border-radius: 0.475rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    /* Checkerboard so white and transparent logos stay visible */
+    background-color: #f5f8fa;
+    background-image: linear-gradient( 45deg, #e9edf1 25%, transparent 25% ), linear-gradient( -45deg, #e9edf1 25%, transparent 25% ),
+                      linear-gradient( 45deg, transparent 75%, #e9edf1 75% ), linear-gradient( -45deg, transparent 75%, #e9edf1 75% );
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+.wc-image-preview img { max-width: 112px; max-height: 56px; object-fit: contain; }
+.wc-image-preview.wc-dark { background: #1e1e2d; }             /* Login and left menu logos sit on dark backgrounds */
+.wc-image-body { flex: 1 1 auto; min-width: 0; }
+
+/* Social provider tile */
+.wc-social {
+    border: 1px solid #eff2f5;
+    border-radius: 0.625rem;
+    padding: 16px;
+    height: 100%;
+}
+
+@media ( max-width: 575.98px ) {
+    .wc-image { flex-direction: column; align-items: stretch; }
+    .wc-image-preview { flex-basis: auto; width: 100%; }
+}
+
+/* ── 1.0.58: tabs ─────────────────────────────────────────── */
+
+/* Sign-in page card (texts + own logo) */
+.wc-page-card {
+    border: 1px solid #eff2f5;
+    border-radius: 0.625rem;
+    padding: 18px;
+    height: 100%;
+}
+.wc-page-card .wc-image { border-bottom: 0; padding-bottom: 0; }
+
+/* Background image: preview + buttons only */
+.wc-image-compact { border-bottom: 0; padding: 0; }
+.wc-image-compact .wc-image-preview { flex-basis: 96px; height: 52px; }
+
+/* ── 1.0.60: folder-style tabs (same look as the Home Screen dialog tabs) ── */
+.nav.wc-tabs {
+    border-bottom: 2px solid var(--bs-primary) !important;   /* The line the selected tab sits on */
+    gap: 4px;
+    flex-wrap: wrap;                                           /* Narrow windows: a second row instead of a scrollbar */
+}
+.nav.wc-tabs .nav-item { margin-bottom: 0; }
+.nav.wc-tabs .nav-link {
+    margin: 0 !important;
+    padding: 10px 18px !important;
+    border: 1px solid transparent !important;
+    border-bottom: 0 !important;
+    border-radius: 8px 8px 0 0 !important;                     /* Curved top corners */
+    background-color: transparent;
+    color: var(--bs-gray-600) !important;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s;
+}
+.nav.wc-tabs .nav-link i { color: inherit; }
+.nav.wc-tabs .nav-link:hover:not(.active) {
+    background-color: var(--bs-gray-100);
+    color: var(--bs-gray-800) !important;
+}
+.nav.wc-tabs .nav-link.active {
+    background-color: var(--bs-primary) !important;            /* Highlighted background of the selected tab */
+    border-color: var(--bs-primary) !important;
+    color: #ffffff !important;
+}

@@ -40,6 +40,22 @@ if( isset( $_SESSION[ 'email' ] ) ){
         $email = $_SESSION[ 'email' ];
 }
 
+// Picture and name from the database, so changes on My Profile show at once (1.0.61)
+$top_user = null;                                               // users row of the signed-in user
+if( is_array( $payload ) && isset( $payload[ SESSION_USER_ID ] ) ){
+    $top_user_rs = selectQuery( "SELECT user_id, fname, lname, nickname, email FROM users WHERE user_id = '" . escape_string( (string) $payload[ SESSION_USER_ID ] ) . "' LIMIT 1" );
+    $top_user = $top_user_rs ? mysqli_fetch_assoc( $top_user_rs ) : null;
+}
+$top_avatar_html = '<img src="assets/scodezy/media/avatar/myprofile.png" alt="" />';   // Picture in the top bar and menu
+$top_display = htmlspecialchars( trim( $name ) );                                         // Name beside the picture
+if( $top_user ){
+    $top_avatar = siteUserAvatar( $top_user[ 'user_id' ] );
+    $top_avatar_html = ( $top_avatar[ 'url' ] !== '' ) ? '<img src="' . htmlspecialchars( $top_avatar[ 'url' ] ) . '" alt="" />' : htmlspecialchars( siteUserInitials( $top_user ) );
+    $top_display = htmlspecialchars( siteUserDisplayName( $top_user ) );
+    $name = htmlspecialchars( trim( $top_user[ 'fname' ] . ' ' . $top_user[ 'lname' ] ) !== '' ? trim( $top_user[ 'fname' ] . ' ' . $top_user[ 'lname' ] ) : $top_user[ 'user_id' ] );
+    $email = htmlspecialchars( $top_user[ 'email' ] !== '' ? $top_user[ 'email' ] : ' - - ' );
+}
+
 ?>
                     <!--begin::Header-->
                     <div id="kt_header" style="" class="header align-items-stretch">
@@ -72,8 +88,9 @@ if( isset( $_SESSION[ 'email' ] ) ){
                                     <!--begin::User-->
                                     <div class="d-flex align-items-stretch" id="kt_header_user_menu_toggle">
                                         <!--begin::Menu wrapper-->
-                                        <div class="topbar-item cursor-pointer symbol px-3 px-lg-5 me-n3 me-lg-n5 symbol-30px symbol-md-35px" data-kt-menu-trigger="click" data-kt-menu-attach="parent" data-kt-menu-placement="bottom-end" data-kt-menu-flip="bottom">
-                                            <img src="assets/scodezy/media/avatar/myprofile.png" alt="metronic" />
+                                        <div class="topbar-item cursor-pointer d-flex align-items-center gap-3 px-3 px-lg-5 me-n3 me-lg-n5" data-kt-menu-trigger="click" data-kt-menu-attach="parent" data-kt-menu-placement="bottom-end" data-kt-menu-flip="bottom">
+                                            <span class="site-user-name d-none d-md-inline text-white fw-semibold fs-6 text-truncate" style="max-width: 220px;"><?= $top_display ?></span>
+                                            <span class="site-user-avatar site-avatar-circle" style="width: 35px; height: 35px; font-size: 13px;"><?= $top_avatar_html ?></span>
                                         </div>
                                         <!--begin::User account menu-->
                                         <div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-800 menu-state-bg menu-state-color fw-semibold py-4 fs-6 w-275px" data-kt-menu="true">
@@ -81,9 +98,7 @@ if( isset( $_SESSION[ 'email' ] ) ){
                                             <div class="menu-item px-3">
                                                 <div class="menu-content d-flex align-items-center px-3">
                                                     <!--begin::Avatar-->
-                                                    <div class="symbol symbol-50px me-5">
-                                                        <img alt="Logo" src="assets/scodezy/media/avatar/myprofile.png" />
-                                                    </div>
+                                                    <span class="site-user-avatar site-avatar-circle me-5" style="width: 50px; height: 50px; font-size: 18px;"><?= $top_avatar_html ?></span>
                                                     <!--end::Avatar-->
                                                     <!--begin::Username-->
                                                     <div class="d-flex flex-column">
@@ -128,6 +143,12 @@ if( isset( $_SESSION[ 'email' ] ) ){
                     </div>
                     <!--end::Header-->
                     
+                    <style>
+                        /* Round profile picture / initials in the top bar (1.0.61) */
+                        .site-avatar-circle { border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+                                              background-color: var(--bs-primary-light, #e9f3ff); color: var(--bs-primary); font-weight: 700; }
+                        .site-avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+                    </style>
                     <script type="text/javascript">
                     var btn_sign_out = getElementByID( 'btn_sign_out' );
                     btn_sign_out.on( 'click', function( e ){

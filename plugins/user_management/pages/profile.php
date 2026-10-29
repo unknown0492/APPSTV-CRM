@@ -1,474 +1,235 @@
-<?php 
+<?php
 checkAuthorizationForPage( 'profile' );
+
+// My Profile (redesigned 1.0.61) - drawn by profile.js; same tabs and width as Website Configuration
+$prf_js  = dirname( __DIR__ ) . '/js/' . basename( __FILE__, ".php" ) . '.js';
+$prf_css = dirname( __DIR__ ) . '/css/' . basename( __FILE__, ".php" ) . '.css';
 ?>
+<link href="plugins/<?=$plugin_name ?>/css/<?=basename( __FILE__, ".php" ) ?>.css?v=<?= @filemtime( $prf_css ) ?>" rel="stylesheet" type="text/css" />
 
-<link href="plugins/<?=$plugin_name ?>/css/<?=basename( __FILE__, ".php" ) ?>.css" rel="stylesheet" type="text/css" />
+<!--begin::My Profile-->
+<div class="post d-flex flex-column-fluid" id="kt_post">
+    <div id="kt_content_container" class="container-fluid">
 
-<!--begin::Post-->
-<div class="main-post post d-flex flex-column-fluid" id="kt_post">
-    <!--begin::Container-->
-    <div id="kt_content_container" class="container-xxl">
-        <!--begin::Navbar-->
-        <div class="card mb-5 mb-xl-10 settings-tab-navbar">
-            <div class="card-body pt-0 pb-0">                        
-                <!--begin::Navs-->
-                <ul class="nav nav-stretch nav-line-tabs nav-line-tabs-2x border-transparent fs-5 fw-bold">
-                    <!--begin::Nav item-->
-                    <li class="nav-item mt-2">
-                        <a class="nav-link text-active-primary ms-0 me-10 py-5 setting-tabs" data-tabname="overview" href="#">Overview</a>
-                    </li>
-                    <!--end::Nav item-->
-                    <!--begin::Nav item-->
-                    <li class="nav-item mt-2">
-                        <a class="nav-link text-active-primary ms-0 me-10 py-5 setting-tabs" data-tabname="contact" href="#">Contact</a>
-                    </li>
-                    <!--end::Nav item-->
-                    <!--begin::Nav item-->
-                    <li class="nav-item mt-2">
-                        <a class="nav-link text-active-primary ms-0 me-10 py-5 setting-tabs" data-tabname="security" href="#">Security</a>
-                    </li>
-                    <!--end::Nav item-->
-                </ul>
-                <!--begin::Navs-->
-            </div>
-        </div>
-        <!--end::Navbar-->
-        
-        <div class="card mb-5 mb-xl-10" id="details_card">
-            <div class="settings overview" data-tabname="overview">
-                <div class="profile_details_view">
-                    <!--begin::Card header-->
-                    <div class="card-header cursor-pointer">
-                        <!--begin::Card title-->
-                        <div class="card-title m-0">
-                            <h3 class="fw-bold m-0">Profile Details</h3>
-                        </div>
-                        <!--end::Card title-->
-                        <!--begin::Action-->
-                        <a href="#" class="btn btn-sm btn-primary align-self-center" id="btn_edit_profile">Edit Profile</a>
-                        <!--end::Action-->
-                    </div>
-                    <!--end::Card header-->
-                    <!--begin::Card body-->
-                    <div class="card-body p-9">
-                        <!--begin::Row-->
-                        <div class="row mb-7">
-                            <!--begin::Label-->
-                            <label class="col-lg-4 fw-semibold text-muted">User ID</label>
-                            <!--end::Label-->
-                            <!--begin::Col-->
-                            <div class="col-lg-8">
-                                <span class="fw-bold fs-6 text-gray-800" id="user_id_v">{user_id}</span>
-                            </div>
-                            <!--end::Col-->
-                        </div>
-                        <!--end::Row-->
-                        <!--begin::Input group-->
-                        <div class="row mb-7">
-                            <!--begin::Label-->
-                            <label class="col-lg-4 fw-semibold text-muted">First Name</label>
-                            <!--end::Label-->
-                            <!--begin::Col-->
-                            <div class="col-lg-8 fv-row">
-                                <span class="fw-semibold text-gray-800 fs-6" id="fname_v">{fname}</span>
-                            </div>
-                            <!--end::Col-->
-                        </div>
-                        <!--end::Input group-->
-                        <!--begin::Input group-->
-                        <div class="row mb-7">
-                            <!--begin::Label-->
-                            <label class="col-lg-4 fw-semibold text-muted">Last Name</label>
-                            <!--end::Label-->
-                            <!--begin::Col-->
-                            <div class="col-lg-8 fv-row">
-                                <span class="fw-semibold text-gray-800 fs-6" id="lname_v">{lname}</span>
-                            </div>
-                            <!--end::Col-->
-                        </div>
-                        <!--end::Input group-->
-                        <!--begin::Input group-->
-                        <div class="row mb-7">
-                            <!--begin::Label-->
-                            <label class="col-lg-4 fw-semibold text-muted">Nickname</label>
-                            <!--end::Label-->
-                            <!--begin::Col-->
-                            <div class="col-lg-8">
-                                <span class="fw-semibold text-gray-800 fs-6" id="nickname_v">{nickname}</span>
-                            </div>
-                            <!--end::Col-->
-                        </div>
-                        <!--end::Input group-->
-
-                        
-                        
-                    </div>
-                    <!--end::Card body-->
-                </div>
-                
-                <div class="profile_details_edit">
-                    <form name="form_edit_profile_details" id="form_edit_profile_details" method="POST" data-parsley-validate>
-                        <!--begin::Card header-->
-                        <div class="card-header cursor-pointer">
-                            <!--begin::Card title-->
-                            <div class="card-title m-0">
-                                <h3 class="fw-bold m-0">Profile Details</h3>
-                            </div>
-                            <!--end::Card title-->
-                        </div>
-                        <!--end::Card header-->
-                        <!--begin::Card body-->
-                        <div class="card-body p-9">
-                        
-                            <!--begin::Input group-->
-                            <div class="row mb-6">
-                                
-                                <input type="text" name="user_id_e" id="user_id_e" class="hidden" value="" />
-                                <!--begin::Label-->
-                                <label class="col-lg-4 col-form-label required fw-semibold fs-6">First Name</label>
-                                <!--end::Label-->
-                                <!--begin::Col-->
-                                <div class="col-lg-8">
-                                    <!--begin::Row-->
-                                    <div class="row">
-                                        <input type="text" name="fname_e" id="fname_e" class="form-control form-control-lg form-control-solid mb-3 mb-lg-0" placeholder="Your first name"
-                                                required="required"
-                                                data-parsley-errors-container="#input_first_name_error" 
-                                                data-parsley-pattern="<?=getValidationRegex( 'VLDTN_FIRST_NAME' ) ?>"
-                                                data-parsley-error-message="<?=getValidationErrMsg( 'VLDTN_FIRST_NAME' ) ?>"
-                                                data-parsley-required="true"
-                                                data-parsley-required-message="Please enter your first name"
-                                                data-parsley-trigger="keyup blur" />
-                                        <div id="input_first_name_error" class="scodezy-error-msg"></div>
-                                    </div>
-                                    <!--end::Row-->
-                                </div>
-                                <!--end::Col-->
-                            </div>
-                            <!--end::Input group-->
-
-                            <!--begin::Input group-->
-                            <div class="row mb-6">
-                                <!--begin::Label-->
-                                <label class="col-lg-4 col-form-label required fw-semibold fs-6">Last Name</label>
-                                <!--end::Label-->
-                                <!--begin::Col-->
-                                <div class="col-lg-8">
-                                    <!--begin::Row-->
-                                    <div class="row">
-                                        <input type="text" name="lname_e" id="lname_e" class="form-control form-control-lg form-control-solid mb-3 mb-lg-0" placeholder="Your last name"
-                                                required="required"
-                                                data-parsley-errors-container="#input_last_name_error" 
-                                                data-parsley-pattern="<?=getValidationRegex( 'VLDTN_LAST_NAME' ) ?>"
-                                                data-parsley-error-message="<?=getValidationErrMsg( 'VLDTN_LAST_NAME' ) ?>"
-                                                data-parsley-required="true"
-                                                data-parsley-required-message="Please enter your last name"
-                                                data-parsley-trigger="keyup blur" />
-                                        <div id="input_last_name_error" class="scodezy-error-msg"></div>
-                                    </div>
-                                    <!--end::Row-->
-                                </div>
-                                <!--end::Col-->
-                            </div>
-                            <!--end::Input group-->
-
-                            <!--begin::Input group-->
-                            <div class="row mb-6">
-                                <!--begin::Label-->
-                                <label class="col-lg-4 col-form-label required fw-semibold fs-6">Nickname</label>
-                                <!--end::Label-->
-                                <!--begin::Col-->
-                                <div class="col-lg-8">
-                                    <!--begin::Row-->
-                                    <div class="row">
-                                        <input type="text" name="nickname_e" id="nickname_e" class="form-control form-control-lg form-control-solid mb-3 mb-lg-0" placeholder="Your nickname"
-                                                required="required"
-                                                data-parsley-errors-container="#input_nick_name_error" 
-                                                data-parsley-pattern="<?=getValidationRegex( 'VLDTN_NICK_NAME' ) ?>"
-                                                data-parsley-error-message="<?=getValidationErrMsg( 'VLDTN_NICK_NAME' ) ?>"
-                                                data-parsley-required="true"
-                                                data-parsley-required-message="Please enter your nickname"
-                                                data-parsley-trigger="keyup blur" />
-                                        <div id="input_nick_name_error" class="scodezy-error-msg"></div>
-                                    </div>
-                                    <!--end::Row-->
-                                </div>
-                                <!--end::Col-->
-                            </div>
-                            <!--end::Input group-->
-                       
-                        </div>
-                        <!--end:: Card Body -->
-                        <!--begin::Actions-->
-                        <div class="card-footer d-flex justify-content-end py-6 px-9">
-                            <button type="button" class="btn btn-light btn-active-light-primary me-2" id="btn_cancel_edit_profile">Cancel</button>
-                            <button type="button" class="btn btn-primary" id="btn_save_profile_details">Save Changes</button>
-                        </div>
-                        <!--end::Actions-->
-                    </form>
-                </div>
-                
-            </div>
-            
-            <div class="settings contact" data-tabname="contact">
-                <!--begin::Card header-->
-                <div class="card-header cursor-pointer">
-                    <!--begin::Card title-->
-                    <div class="card-title m-0">
-                        <h3 class="fw-bold m-0">Contact Information</h3>
-                    </div>
-                    <!--end::Card title-->
-                </div>
-                <!--begin::Card header-->
-                <!--begin::Card body-->
-                <div class="card-body p-9">
-                    <!--begin::Email Address-->
-                    <div class="d-flex flex-wrap align-items-center">
-                        <!--begin::Label-->
-                        <div id="contact_email_v">
-                            <div class="fs-6 fw-bold mb-1" id="email_title_v">Email Address</div>
-                            <div class="fw-semibold text-gray-600" id="email_v">{email}</div>
-                        </div>
-                        <!--end::Label-->
-                        <!--begin::Edit-->
-                        <div id="contact_email_e" class="flex-row-fluid d-none">
-                            <!--begin::Form-->
-                            <form id="form_update_email" name="form_update_email" class="form" autocomplete="off" data-parsley-validate>
-                                <div class="row mb-6">
-                                    <div class="col-lg-6 mb-4 mb-lg-0">
-                                        <div class="fv-row mb-0">
-                                            <label for="emailaddress" class="form-label fs-6 fw-bold mb-3">Enter New Email Address</label>
-                                            <input type="email" class="form-control form-control-lg form-control-solid" id="email_e" name="email_e" placeholder="Email Address" required="required" autocomplete="off"
-                                                data-parsley-errors-container="#input_email_e_error" 
-                                                data-parsley-pattern="<?=getValidationRegex( 'VLDTN_EMAIL' ) ?>"
-                                                data-parsley-error-message="<?=getValidationErrMsg( 'VLDTN_EMAIL' ) ?>"
-                                                data-parsley-required="true"
-                                                data-parsley-required-message="Please enter your email"
-                                                data-parsley-trigger="keyup blur" />
-                                            <div id="input_email_e_error" class="scodezy-error-msg"></div>
-                                        </div>
-                                    </div>
-                                    <div class="col-lg-6">
-                                        <div class="fv-row mb-0">
-                                            <label for="confirmemailpassword" class="form-label fs-6 fw-bold mb-3">Confirm Password</label>
-                                            <input type="password" class="form-control form-control-lg form-control-solid" name="password_e" id="password_e" required="required" autocomplete="off"
-                                                placeholder="Enter your password"
-                                                data-parsley-errors-container="#input_password_e_error" 
-                                                data-parsley-required="true"
-                                                data-parsley-required-message="Please enter your password"
-                                                data-parsley-trigger="keyup blur" />
-                                            <div id="input_password_e_error" class="scodezy-error-msg"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="d-flex">
-                                    <button id="btn_update_email" type="button" class="btn btn-primary me-2 px-6">Update Email</button>
-                                    <button id="btn_cancel_update_email" type="button" class="btn btn-color-gray-500 btn-active-light-primary px-6">Cancel</button>
-                                </div>
-                            </form>
-                            <!--end::Form-->
-                        </div>
-                        <!--end::Edit-->
-                        <!--begin::Action-->
-                        <div id="div_change_email_button" class="ms-auto">
-                            <button class="btn btn-light btn-active-light-primary" id="btn_change_email">Change Email</button>
-                        </div>
-                        <!--end::Action-->
-                    </div>
-                    <!--end::Email Address-->
-
-                    <!--begin::Separator-->
-                    <div class="separator separator-dashed my-6"></div>
-                    <!--end::Separator-->
-
-                    <!--begin::Mobile -->
-                    <div class="d-flex flex-wrap align-items-center">
-                        <!--begin::Label-->
-                        <div id="contact_phone_v">
-                            <div class="fs-6 fw-bold mb-1" id="phone_title_v">Mobile</div>
-                            <div class="fw-semibold text-gray-600"><span id="country_code_v">+91</span><span id="phone_v">966432 7699</span></div>
-                        </div>
-                        <!--end::Label-->
-                        <!--begin::Edit-->
-                        <div id="contact_phone_e" class="flex-row-fluid d-none">
-                            <!--begin::Form-->
-                            <form id="form_update_phone" name="form_update_phone" class="form" novalidate="novalidate">
-                                <div class="row mb-6">
-                                    <div class="col-lg-2 mb-4 mb-lg-0">
-                                        <div class="fv-row mb-0">
-                                            <label for="select_country_code_e" class="form-label fs-6 fw-bold mb-3">Country Code</label>
-                                            <select id="select_country_code_e" name="select_country_code_e" class="form-select form-select-lg form-select-solid" data-control="select2">
-                                                <option value="65" selected>+65</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="col-lg-5">
-                                        <div class="fv-row mb-0">
-                                            <label for="phone" class="form-label fs-6 fw-bold mb-3">New Mobile Number</label>
-                                            <input type="text" class="form-control form-control-lg form-control-solid" id="phone_e" name="phone_e" placeholder="Enter your mobile number" required="required" autocomplete="off"
-                                                data-parsley-errors-container="#input_phone_e_error" 
-                                                data-parsley-pattern="<?=getValidationRegex( 'VLDTN_DIGITS' ) ?>"
-                                                data-parsley-error-message="Entered mobile number is invalid"
-                                                data-parsley-required="true"
-                                                data-parsley-required-message="Please enter your contact number"
-                                                data-parsley-trigger="keyup blur" />
-                                            <div id="input_phone_e_error" class="scodezy-error-msg"></div>
-                                        </div>
-                                    </div>
-                                    <div class="col-lg-5">
-                                        <div class="fv-row mb-0">
-                                            <label for="phone_password_e" class="form-label fs-6 fw-bold mb-3">Confirm Password</label>
-                                            <input type="password" class="form-control form-control-lg form-control-solid" name="phone_password_e" id="phone_password_e" required="required" autocomplete="off"
-                                                placeholder="Enter your password"
-                                                data-parsley-errors-container="#input_phone_password_e_error" 
-                                                data-parsley-required="true"
-                                                data-parsley-required-message="Please enter your password"
-                                                data-parsley-trigger="keyup blur" />
-                                            <div id="input_phone_password_e_error" class="scodezy-error-msg"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="d-flex">
-                                    <button id="btn_update_phone" type="button" class="btn btn-primary me-2 px-6">Update</button>
-                                    <button id="btn_cancel_update_phone" type="button" class="btn btn-color-gray-500 btn-active-light-primary px-6">Cancel</button>
-                                </div>
-                            </form>
-                            <!--end::Form-->
-                        </div>
-                        <!--end::Edit-->
-                        <!--begin::Action-->
-                        <div id="div_change_phone" class="ms-auto">
-                            <button class="btn btn-light btn-active-light-primary" id="btn_change_phone">Change Mobile</button>
-                        </div>
-                        <!--end::Action-->
-                    </div>
-                    <!--end::Mobile-->
-
-                </div>
-                <!--end::Card body-->
-            </div>
-
-            <div class="settings security" data-tabname="security">
-
-                <!--begin::Card header-->
-                <div class="card-header cursor-pointer">
-                    <!--begin::Card title-->
-                    <div class="card-title m-0">
-                        <h3 class="fw-bold m-0">Security</h3>
-                    </div>
-                    <!--end::Card title-->
-                </div>
-                <!--begin::Card header-->
-
-                <!--begin::Card body-->
-                <div class="card-body p-9">
-                    <!--begin::Password-->
-                    <div class="d-flex flex-wrap align-items-center mb-10">
-                        <!--begin::Label-->
-                        <div id="p_password_v">
-                            <div class="fs-6 fw-bold mb-1">Password</div>
-                            <div class="fw-semibold text-gray-600">************</div>
-                        </div>
-                        <!--end::Label-->
-                        <!--begin::Edit-->
-                        <div id="div_p_password_e" class="flex-row-fluid d-none">
-                            <!--begin::Form-->
-                            <form id="form_change_self_password" name="form_change_self_password" class="form" data-parsley-validate>
-                                <div class="row mb-1">
-                                    <div class="col-lg-4">
-                                        <div class="fv-row mb-0">
-                                            <label for="p_password_e" class="form-label fs-6 fw-bold mb-3">Current Password</label>
-                                            <input type="password" class="form-control form-control-lg form-control-solid" name="p_password_e" id="p_password_e" required="required" autocomplete="off" 
-                                                    placeholder="Enter your current password"
-                                                    data-parsley-errors-container="#input_p_password_e_error" 
-                                                    data-parsley-required="true"
-                                                    data-parsley-required-message="Please enter your current password"
-                                                    data-parsley-trigger="keyup blur" />
-                                            <div id="input_p_password_e_error" class="scodezy-error-msg"></div>
-                                        </div>
-                                    </div>                                    
-                                    <div class="col-lg-4">
-                                        <div class="fv-row mb-0">
-                                            <label for="p_new_password_e" class="form-label fs-6 fw-bold mb-3">New Password</label>
-                                            <input type="password" class="form-control form-control-lg form-control-solid" name="p_new_password_e" id="p_new_password_e" required="required" autocomplete="off" 
-                                                    placeholder="Enter new password"
-                                                    data-parsley-pattern="<?=getValidationRegex( 'VLDTN_PASSWORD' ) ?>"
-                                                    data-parsley-error-message="<?=getValidationErrMsg( 'VLDTN_PASSWORD' ) ?>"
-                                                    data-parsley-errors-container="#input_p_new_password_e_error" 
-                                                    data-parsley-required="true"
-                                                    data-parsley-required-message="Please enter new password"
-                                                    data-parsley-trigger="keyup blur" />
-                                            <div id="input_p_new_password_e_error" class="scodezy-error-msg"></div>
-                                        </div>
-                                    </div>
-                                    <div class="col-lg-4">
-                                        <div class="fv-row mb-0">
-                                            <label for="p_confirm_password_e" class="form-label fs-6 fw-bold mb-3">Confirm New Password</label>
-                                            <input type="password" class="form-control form-control-lg form-control-solid" name="p_confirm_password_e" id="p_confirm_password_e" required="required" autocomplete="off" 
-                                                    placeholder="Confirm new password"
-                                                    data-parsley-pattern="<?=getValidationRegex( 'VLDTN_PASSWORD' ) ?>"
-                                                    data-parsley-error-message="<?=getValidationErrMsg( 'VLDTN_PASSWORD' ) ?>"
-                                                    data-parsley-errors-container="#input_p_confirm_password_e_error" 
-                                                    data-parsley-required="true"
-                                                    data-parsley-required-message="Please confirm your new password"
-                                                    data-parsley-trigger="keyup blur" />
-                                            <div id="input_p_confirm_password_e_error" class="scodezy-error-msg"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="d-flex mt-3" id="div_update_password">
-                                    <button id="btn_update_password" type="button" class="btn btn-primary me-2 px-6 animated-button">Update Password</button>
-                                    <button id="btn_cancel_update_password" type="button" class="btn btn-color-gray-500 btn-active-light-primary px-6">Cancel</button>
-                                </div>
-                            </form>
-                            <!--end::Form-->
-                        </div>
-                        <!--end::Edit-->
-                        <!--begin::Action-->
-                        <div id="div_change_password" class="ms-auto">
-                            <button class="btn btn-light btn-active-light-primary animated-button" id="btn_change_password">Change Password</button>
-                        </div>
-                        <!--end::Action-->
-                    </div>
-                    <!--end::Password-->
-
-
-
-
-                </div>
-                <!--end::Card body-->
-            </div>
-                       
+        <div class="text-center text-muted py-15" id="prf_loading">
+            <span class="spinner-border spinner-border-sm align-middle me-2"></span> Loading…
         </div>
 
+        <div class="d-none" id="prf_page">
+            <!-- Who -->
+            <div class="card mb-6">
+                <div class="card-body d-flex flex-wrap align-items-center gap-6 py-7">
+                    <div class="prf-avatar prf-avatar-lg" id="prf_head_avatar"></div>
+                    <div class="flex-grow-1">
+                        <div class="fs-2 fw-bold text-gray-900" id="prf_head_name"></div>
+                        <div class="text-muted fw-semibold"><span id="prf_head_user_id"></span> &middot; <span id="prf_head_email"></span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="px-9 pt-7">
+                    <ul class="nav nav-tabs prf-tabs fs-6" id="prf_tabs" role="tablist">
+                        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#prf_tab_profile"><i class="fa-solid fa-user me-2"></i>Profile</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#prf_tab_picture"><i class="fa-solid fa-image-portrait me-2"></i>Picture</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#prf_tab_contact"><i class="fa-solid fa-address-book me-2"></i>Contact</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#prf_tab_security"><i class="fa-solid fa-shield-halved me-2"></i>Security</a></li>
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content">
+
+                        <!-- Profile -->
+                        <div class="tab-pane fade show active" id="prf_tab_profile" role="tabpanel">
+                            <div class="mw-700px">
+                                <div class="row g-4">
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label">User ID</label>
+                                        <input type="text" class="form-control form-control-solid" id="prf_user_id" disabled />
+                                    </div>
+                                    <div class="col-12 col-md-6"></div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label required" for="prf_fname">First name</label>
+                                        <input type="text" class="form-control form-control-solid" id="prf_fname" maxlength="100" />
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label required" for="prf_lname">Last name</label>
+                                        <input type="text" class="form-control form-control-solid" id="prf_lname" maxlength="100" />
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label" for="prf_nickname">Nickname</label>
+                                        <input type="text" class="form-control form-control-solid" id="prf_nickname" maxlength="100" />
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-end mt-6">
+                                    <button type="button" class="btn btn-primary" id="prf_save_details">
+                                        <span class="indicator-label">Save details</span>
+                                        <span class="indicator-progress">Please wait… <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
+                                    </button>
+                                </div>
+
+                                <div class="separator my-8"></div>
+                                <h4 class="fw-bold mb-1">Name next to your picture</h4>
+                                <div class="text-muted fs-7 mb-4" id="prf_display_hint"></div>
+                                <div class="row align-items-center">
+                                    <div class="col-12 col-md-6 mb-3 mb-md-0"><select class="form-select form-select-solid" id="prf_display_field"></select></div>
+                                    <div class="col-12 col-md-6 text-muted fs-7">Shows as: <span class="fw-bold text-gray-800" id="prf_display_preview"></span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Picture -->
+                        <div class="tab-pane fade" id="prf_tab_picture" role="tabpanel">
+                            <div class="d-flex flex-wrap align-items-center gap-6 mb-8">
+                                <div class="prf-avatar prf-avatar-xl" id="prf_picture_current"></div>
+                                <div>
+                                    <div class="fw-bold fs-5 mb-1">Your picture</div>
+                                    <div class="text-muted fs-7 mb-4">It appears at the top right of every page. Pick a cartoon, use your initials, or upload your own.</div>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <button type="button" class="btn btn-sm btn-light-primary" id="prf_use_initials"><i class="fa-solid fa-font me-1"></i>Use my initials</button>
+                                        <button type="button" class="btn btn-sm btn-primary d-none" id="prf_upload_btn"><i class="fa-solid fa-upload me-1"></i>Upload a picture</button>
+                                    </div>
+                                    <div class="form-text d-none" id="prf_upload_hint">PNG, JPG or WEBP, up to 2 MB. A square picture looks best.</div>
+                                </div>
+                            </div>
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+                                <h4 class="fw-bold mb-0">Cartoon avatars</h4>
+                                <div class="btn-group" role="group" id="prf_gender_filter">
+                                    <input type="radio" class="btn-check" name="prf_gender" id="prf_gender_all" value="all" checked />
+                                    <label class="btn btn-sm btn-outline btn-outline-dashed btn-active-light-primary" for="prf_gender_all">All</label>
+                                    <input type="radio" class="btn-check" name="prf_gender" id="prf_gender_male" value="male" />
+                                    <label class="btn btn-sm btn-outline btn-outline-dashed btn-active-light-primary" for="prf_gender_male"><i class="fa-solid fa-person me-1"></i>Male</label>
+                                    <input type="radio" class="btn-check" name="prf_gender" id="prf_gender_female" value="female" />
+                                    <label class="btn btn-sm btn-outline btn-outline-dashed btn-active-light-primary" for="prf_gender_female"><i class="fa-solid fa-person-dress me-1"></i>Female</label>
+                                </div>
+                            </div>
+                            <div class="prf-avatar-grid" id="prf_avatar_grid"></div>
+                        </div>
+
+                        <!-- Contact -->
+                        <div class="tab-pane fade" id="prf_tab_contact" role="tabpanel">
+                            <div class="mw-700px">
+                                <h4 class="fw-bold mb-1">Email address</h4>
+                                <div class="text-muted fs-7 mb-4">Used for sign-in help and notices. A new address must be confirmed before it is used.</div>
+                                <div class="fs-5 fw-semibold mb-4"><i class="fa-solid fa-envelope text-primary me-2"></i><span id="prf_email_current"></span></div>
+                                <div id="prf_email_pending"></div>
+                                <div id="prf_email_form">
+                                    <div class="row g-4">
+                                        <div class="col-12 col-md-6">
+                                            <label class="form-label" for="prf_new_email">New email address</label>
+                                            <input type="email" class="form-control form-control-solid" id="prf_new_email" maxlength="100" autocomplete="off" />
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <label class="form-label" for="prf_email_password">Your password</label>
+                                            <input type="password" class="form-control form-control-solid" id="prf_email_password" maxlength="20" autocomplete="current-password" />
+                                        </div>
+                                    </div>
+                                    <div class="d-flex justify-content-end mt-4">
+                                        <button type="button" class="btn btn-primary" id="prf_change_email">
+                                            <span class="indicator-label">Change email</span>
+                                            <span class="indicator-progress">Please wait… <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="separator my-8"></div>
+                                <h4 class="fw-bold mb-1">Mobile number</h4>
+                                <div class="text-muted fs-7 mb-4">A one-time code is emailed to you to confirm a new number.</div>
+                                <div class="fs-5 fw-semibold mb-4"><i class="fa-solid fa-mobile-screen text-primary me-2"></i><span id="prf_phone_current"></span></div>
+                                <div class="row g-4">
+                                    <div class="col-4 col-md-2">
+                                        <label class="form-label" for="prf_country_code">Code</label>
+                                        <div class="input-group"><span class="input-group-text">+</span><input type="text" class="form-control form-control-solid" id="prf_country_code" maxlength="4" inputmode="numeric" /></div>
+                                    </div>
+                                    <div class="col-8 col-md-4">
+                                        <label class="form-label" for="prf_phone">New mobile number</label>
+                                        <input type="text" class="form-control form-control-solid" id="prf_phone" maxlength="15" inputmode="numeric" />
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label" for="prf_phone_password">Your password</label>
+                                        <input type="password" class="form-control form-control-solid" id="prf_phone_password" maxlength="20" autocomplete="current-password" />
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-end mt-4">
+                                    <button type="button" class="btn btn-primary" id="prf_change_phone">
+                                        <span class="indicator-label">Change mobile</span>
+                                        <span class="indicator-progress">Please wait… <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Security -->
+                        <div class="tab-pane fade" id="prf_tab_security" role="tabpanel">
+                            <div class="mw-700px">
+                                <h4 class="fw-bold mb-1">Change password</h4>
+                                <div class="text-muted fs-7 mb-5">3 to 20 characters: letters, digits and _ @ #. You get an email after every change.</div>
+                                <div class="mb-4">
+                                    <label class="form-label" for="prf_pw_current">Current password</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control form-control-solid" id="prf_pw_current" maxlength="20" autocomplete="current-password" />
+                                        <button type="button" class="btn btn-light" data-prf-eye="prf_pw_current" title="Show / hide"><i class="fa-solid fa-eye"></i></button>
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label" for="prf_pw_new">New password</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control form-control-solid" id="prf_pw_new" maxlength="20" autocomplete="new-password" />
+                                        <button type="button" class="btn btn-light" data-prf-eye="prf_pw_new" title="Show / hide"><i class="fa-solid fa-eye"></i></button>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-center gap-3 mb-4">
+                                    <div class="prf-strength flex-grow-1"><div class="prf-strength-bar" id="prf_strength_bar"></div></div>
+                                    <span class="fs-7 fw-semibold text-muted text-nowrap" id="prf_strength_text">&nbsp;</span>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label" for="prf_pw_confirm">Confirm new password</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control form-control-solid" id="prf_pw_confirm" maxlength="20" autocomplete="new-password" />
+                                        <button type="button" class="btn btn-light" data-prf-eye="prf_pw_confirm" title="Show / hide"><i class="fa-solid fa-eye"></i></button>
+                                    </div>
+                                    <div class="form-text text-danger d-none" id="prf_pw_mismatch">The passwords do not match.</div>
+                                </div>
+                                <label class="form-check form-check-custom form-check-solid mb-6">
+                                    <input class="form-check-input" type="checkbox" id="prf_sign_out_others" checked />
+                                    <span class="form-check-label">Sign out all my other devices and browsers</span>
+                                </label>
+                                <div class="d-flex justify-content-end">
+                                    <button type="button" class="btn btn-primary" id="prf_change_password">
+                                        <span class="indicator-label">Change password</span>
+                                        <span class="indicator-progress">Please wait… <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    <!--end::Container-->
 </div>
-<!--end::Post-->
+<!--end::My Profile-->
 
-<div class="modal fade" tabindex="-1" id="modal_otp" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" >
-    <div class="modal-dialog">
-        <div class="modal-content rounded">
-            <div class="modal-body p-20 text-center">
-                <i class="fa-solid fa-circle-info fs-5x text-info "> </i>
-                <p class="modal-otp-title ">One Time Password</p>
-                <div class="text-center mt-7">
-                    <p class="modal-otp-message">Please enter the OTP received on your mobile number 9109 3387 <br />
-                    <input type="text" id="otp_phone_update" name="otp_phone_update" class="form-control w-275px mt-3 input-otp" maxlength="5">
-                    <p class="otp-resend-info mt-2">Please wait for <span class="seconds">{seconds}</span> seconds before requesting for a new OTP again</p>
-                    <p class="otp-request-again mt-2 hidden d-none">Did not receive the OTP ? <a id="otp_request_again" href="#">Request OTP again</a></p>
-                    <p class="otp-invalid mt-2 hidden d-none"></p>
-                </div>
+<!-- Mobile number: one-time code -->
+<div class="modal fade" tabindex="-1" id="prf_otp_modal" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body p-10 text-center">
+                <i class="fa-solid fa-envelope-open-text fs-3x text-primary mb-4"></i>
+                <div class="fs-3 fw-bold mb-2">Enter the code</div>
+                <div class="text-muted mb-6" id="prf_otp_text">A one-time code was emailed to you.</div>
+                <input type="text" class="form-control form-control-solid text-center fs-2 fw-bold mx-auto mw-200px" id="prf_otp" maxlength="5" inputmode="numeric" autocomplete="one-time-code" />
+                <div class="mt-4 fs-7"><a href="#" id="prf_otp_resend">Send the code again</a> <span class="text-muted" id="prf_otp_wait"></span></div>
             </div>
-
             <div class="modal-footer">
-                <button type="reset" class="btn btn-default" data-bs-dismiss="modal" id="btn_cancel_phone_update_otp">Cancel</button>
-                <button type="button" class="btn btn-primary" id="btn_submit_phone_update_otp">Submit</button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="prf_otp_submit">Confirm</button>
             </div>
         </div>
     </div>
 </div>
 
+<input type="file" class="d-none" id="prf_file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" />
 
- <script src="assets/scodezy/js/moment/moment.js"></script>
-<script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js"></script>
+<script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js?v=<?= @filemtime( $prf_js ) ?>"></script>

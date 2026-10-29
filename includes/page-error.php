@@ -13,6 +13,26 @@ if( $scodezy_page_error_code === 403 && isset( $page_name ) && $page_name !== ''
     $scodezy_page_error_title = $error_page_row ? (string) $error_page_row[ 'page_title' ] : '';
 }
 $scodezy_page_error_denied = ( $scodezy_page_error_code === 403 );  // Access denied (else: page not found)
+if( $scodezy_page_error_code === 503 ){
+    // Maintenance mode (1.0.58)
+?>
+<div class="post d-flex flex-column-fluid" id="kt_post">
+    <div id="kt_content_container" class="container-xxl">
+        <div class="card">
+            <div class="card-body d-flex flex-column align-items-center text-center py-15 px-5">
+                <div class="d-flex align-items-center justify-content-center rounded-circle mb-7 bg-light-warning" style="width: 96px; height: 96px;">
+                    <i class="fa-solid fa-person-digging text-warning" style="font-size: 40px;"></i>
+                </div>
+                <h1 class="fw-bolder text-gray-900 mb-4">Down for maintenance</h1>
+                <div class="fs-5 text-gray-600 mb-4" style="max-width: 520px;"><?= htmlspecialchars( siteMaintenanceMessage() ) ?></div>
+                <div class="fs-7 text-muted">Please try again later.</div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php
+    return;
+}
 ?>
 <div class="post d-flex flex-column-fluid" id="kt_post">
     <div id="kt_content_container" class="container-xxl">

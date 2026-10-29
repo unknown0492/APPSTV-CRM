@@ -643,6 +643,12 @@ function isLoggedIn(){
     
     // 4. If the user_id or role_id has been deleted from the DB, then logout the user
     $jwtData = getJWTPayload( $jwt );
+
+    // Signed out by "sign out other devices" (password change, 1.0.61)
+    if( !siteUserTokenStillAllowed( $jwtData ) ){
+        sign_out();
+        return false;
+    }
     $sql = "SELECT user_id, role_id FROM users WHERE user_id='{$jwtData[ SESSION_USER_ID ]}'";
     $result_set = selectQuery( $sql );
     if( ($result_set === NULL) || (mysqli_num_rows( $result_set ) == 0) ){
@@ -1663,6 +1669,10 @@ function hasAuthorization( $functionality_name ){
     $payload = getJWTPayload( $jwt );
     $role_id = $payload[ SESSION_AUTHORIZATION ];
     
+    // A user who changed the password with "sign out other devices": older sign-ins are refused (1.0.61)
+    if( !siteUserTokenStillAllowed( $payload ) ){
+        return false;
+    }
     // Check if this role_id has access to the $functionality_name
     $sql = "SELECT rf.functionality_id, rf.role_id FROM functionalities f, roles_functionalities rf WHERE (f.functionality_name='$functionality_name') AND (f.functionality_id=rf.functionality_id) AND (rf.role_id='$role_id')";
     $result_set = selectQuery( $sql );

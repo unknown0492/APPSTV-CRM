@@ -25,6 +25,15 @@
     <!--begin::Head-->
     <head>
         <?php
+            // Browser tab title: '<page> | <site>' (format on Website Configuration) (1.0.58)
+            $tab_page_params = getUrlParameters( $_SERVER[ 'REQUEST_URI' ] );
+            $tab_page_title  = '';
+            if( is_array( $tab_page_params ) && !empty( $tab_page_params[ 'what_do_you_want' ] ) ){
+                $tab_page_rs = selectQuery( "SELECT page_title FROM pages WHERE page_name = '" . escape_string( (string) $tab_page_params[ 'what_do_you_want' ] ) . "' LIMIT 1" );
+                $tab_page_row = $tab_page_rs ? mysqli_fetch_assoc( $tab_page_rs ) : null;
+                $tab_page_title = $tab_page_row ? (string) $tab_page_row[ 'page_title' ] : '';
+            }
+            $title = htmlspecialchars( siteAdminTabTitle( $tab_page_title ) );
             include( "./includes/meta-tags.php" );			
 	?>
         
@@ -97,7 +106,12 @@
                         
                         
                         <?php  
-                            if( $url_params == false ){ ?>
+                            // Maintenance mode: only roles that may open Website Configuration keep working (1.0.58)
+                            if( siteMaintenanceOn() && !hasAuthorization( 'website_configuration' ) ){
+                                $scodezy_page_error_code = 503;
+                                include INC_PATH . '/page-error.php';
+                            }
+                            else if( $url_params == false ){ ?>
                                 <h4 class="text-center"><?=$site_tagline ?></h4> <br />
                             <?php 
                             }

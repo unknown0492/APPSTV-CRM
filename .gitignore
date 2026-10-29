@@ -23,3 +23,6 @@ error_log
 # Composer libraries are installed per server (live has full installs that differ from the old tracked copies)
 /library/*/vendor/
 /library/*/composer.lock
+
+# Logos / favicon / avatars uploaded on Website Configuration and My Profile
+/data/uploads/

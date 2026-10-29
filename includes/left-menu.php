@@ -203,14 +203,6 @@
                     </div>
                     <!--end::Aside menu-->
                     
-                    <!--begin::Footer-->
-                    <div class="aside-footer flex-column-auto pb-7 px-5" id="kt_aside_footer">
-                        <a href="#" class="btn btn-custom btn-primary w-100" data-bs-toggle="tooltip" data-bs-trigger="hover" data-bs-dismiss-="click" title="Awaiting Development">
-                            <span class="btn-label">Docs</span>
-                            <i class="ki-outline ki-document btn-icon fs-2"></i>
-                        </a>
-                    </div>
-                    <!--end::Footer-->
                     
                 </div>
                 <!--end::Aside-->

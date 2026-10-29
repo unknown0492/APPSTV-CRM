@@ -39,6 +39,7 @@ require_once LIB_PATH . '/Classes/FormHelper.php';
 require_once LIB_PATH . '/custom_global_functions_includes.php';
 require_once LIB_PATH . '/custom_functions.php';
 require_once LIB_PATH . '/functions.php';
+require_once LIB_PATH . '/site_settings_functions.php';         // Website Configuration settings (1.0.58)
 
 
 // Include all plugin /includes and /functions folder files

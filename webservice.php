@@ -247,6 +247,11 @@
         $value = mysqli_fetch_assoc( $result_set );
         
         if( ( $value[ 'user_id' ] == $e_user_id ) && ( password_verify( $e_password, $value[ 'password' ] ) ) ){
+            // Maintenance mode: only roles that may open Website Configuration sign in (1.0.58)
+            if( siteMaintenanceOn() && !siteRoleBypassesMaintenance( $value[ 'role_id' ] ) ){
+                echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "The website is down for maintenance. " . siteMaintenanceMessage() );
+                return;
+            }
             //sessionRevalidate( true );
             /*
             @session_regenerate_id();

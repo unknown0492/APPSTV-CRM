@@ -9,7 +9,7 @@
                                 <!--begin::Page title-->
                                     <!--begin::Title-->
                                     <h1 class="d-flex justify-content-start text-gray-900 fw-bold my-1 fs-3">
-                                        <?=($url_params==false)?"Administrator Panel":(($page==NULL)?"Administrator Panel":$page->page_title) ?>
+                                        <?= htmlspecialchars( ( $url_params == false || $page == NULL ) ? siteDashboardHeading() : $page->page_title ) ?><?php /* Dashboard heading: Website Configuration (1.0.58) */ ?>
                                     </h1>
                                     <!--end::Title-->
                                     <!--begin::Separator-->
