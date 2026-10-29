@@ -101,11 +101,23 @@
                                 <h4 class="text-center"><?=$site_tagline ?></h4> <br />
                             <?php 
                             }
-                            else if( in_array( $page_name, $admin_pages ) ){ 
-                                include "plugins/$plugin_name/pages/" . $page_name . '.php'; 
+                            else if( in_array( $page_name, $admin_pages ) ){
+                                // A page the role may not open shows the Access denied card here instead of a JSON line (1.0.10)
+                                define( 'SCODEZY_PAGE_ERRORS', true );
+                                ob_start();
+                                try{
+                                    include "plugins/$plugin_name/pages/" . $page_name . '.php';
+                                    ob_end_flush();
+                                }
+                                catch( ScodezyPageAccessDenied $e ){
+                                    ob_end_clean();                                   // Drops anything the page printed before its check
+                                    $scodezy_page_error_code = 403;
+                                    include INC_PATH . '/page-error.php';
+                                }
                             }
                             else{
-                                echo "Invalid Choice";
+                                $scodezy_page_error_code = 404;                       // No such page (was: "Invalid Choice") (1.0.10)
+                                include INC_PATH . '/page-error.php';
                             }
                         ?>
                         

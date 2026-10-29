@@ -1639,8 +1639,17 @@ function checkAuthorizationForFunction( $functionality_name ){
     }
 }
 
+/**
+ * Thrown by checkAuthorizationForPage() inside the admin panel: adminpanel.php then shows the Access denied card
+ * (includes/page-error.php) in place of the page, with the menu and top bar kept (1.0.10)
+ */
+class ScodezyPageAccessDenied extends Exception {}
+
 function checkAuthorizationForPage( $file_name ){
     if ( !hasAuthorization( $file_name ) ) {
+        if( defined( 'SCODEZY_PAGE_ERRORS' ) ){              // Admin panel page area: shows the Access denied card (1.0.10)
+            throw new ScodezyPageAccessDenied( $file_name );
+        }
         echo createJSONMessage(GENERAL_ERROR_MESSAGE, __FUNCTION__, "You dont have sufficient privilege to view this page !");
         exit();
     }
