@@ -70,7 +70,7 @@ $_SESSION[ 'code' ] = $e_password_reset_code;
 
         <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-        <link rel="shortcut icon" href="assets/media/logos/favicon.ico" />
+        <?php include INC_PATH . '/favicon.php'; ?>
         <!--begin::Fonts(mandatory for all pages)-->
         <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700" />
         <!--end::Fonts-->

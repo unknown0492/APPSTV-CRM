@@ -316,4 +316,24 @@ function siteUserTokenStillAllowed( $payload ){
     }
     return !isset( $payload[ 'iat' ] ) || (float) $payload[ 'iat' ] >= $checked[ $user_id ];
 }
+
+/**
+ * @description <link> tags of one favicon file, with a version tag so a changed icon is fetched again (1.0.63)
+ * @param {string} $path - Path on this site or full address
+ * @param {array} $rels - rel values to print for it
+ * @returns {string} HTML
+ */
+function siteFaviconTags( $path, $rels ){
+    $types = array( 'ico' => 'image/x-icon', 'png' => 'image/png', 'svg' => 'image/svg+xml', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'webp' => 'image/webp', 'gif' => 'image/gif' );
+    $ext = strtolower( pathinfo( (string) parse_url( $path, PHP_URL_PATH ), PATHINFO_EXTENSION ) );
+    $local = !preg_match( '#^https?://#i', $path );
+    $version = $local ? (string) @filemtime( BASE_PATH . '/' . $path ) : substr( md5( $path ), 0, 8 );   // Changes when the icon changes
+    $href = htmlspecialchars( $path . ( strpos( $path, '?' ) === false ? '?' : '&' ) . 'v=' . $version );
+    $type = isset( $types[ $ext ] ) ? ' type="' . $types[ $ext ] . '"' : '';
+    $html = '';
+    foreach( $rels as $rel ){
+        $html .= '<link rel="' . $rel . '" href="' . $href . '"' . $type . ( $rel === 'shortcut icon' ? '' : ' sizes="256x256"' ) . ' />' . "\n";
+    }
+    return $html;
+}
 ?>

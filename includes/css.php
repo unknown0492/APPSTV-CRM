@@ -1,7 +1,5 @@
         <!-- Favicon - Begin -->
-        <link rel="shortcut icon" href="assets/scodezy/media/site/favicon/favicon.ico" />
-        <link rel="icon" href="assets/scodezy/media/site/favicon/favicon.png" type="image/png" sizes="256x256" />
-        <link rel="apple-touch-icon"  href="assets/scodezy/media/site/favicon/favicon.png" sizes="256x256" />
+        <?php include INC_PATH . '/favicon.php'; ?>
         <!-- Favicon - End -->
 
         <!-- GLOBAL MANDATORY STYLES - Begin -->

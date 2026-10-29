@@ -18,9 +18,7 @@ $signin = siteSigninPage( 'signup' );             // Texts / logo of this page: 
         <meta name="viewport" content="width=device-width, initial-scale=1" />
 
         <!-- Favicon - Begin -->
-        <link rel="shortcut icon" href="assets/scodezy/media/site/favicon/favicon.ico" />
-        <link rel="icon" href="assets/scodezy/media/site/favicon/favicon.png" type="image/png" sizes="256x256" />
-        <link rel="apple-touch-icon"  href="assets/scodezy/media/site/favicon/favicon.png" sizes="256x256" />
+        <?php include INC_PATH . '/favicon.php'; ?>
         <!-- Favicon - End -->
         
         <!--begin::Fonts(mandatory for all pages)-->
