@@ -5,6 +5,18 @@ require './load-all.php';
 
 $site_config = getSiteConfig();                  // Site name for the title (1.0.8)
 
+/**
+ * @description An expired / used link: shows the message, then opens the login page. Done in the browser because the
+ *              message is page output, after which a Location header can no longer be sent (1.0.9)
+ * @returns {void} Ends the request
+ */
+function passwordResetLinkExpired(){
+    $message = "Password Reset Link has been expired, please redo the password reset process again on the Forgot Password Page";
+    echo "<script>alert( " . json_encode( $message ) . " ); window.location.href = " . json_encode( PAGE_LOGIN ) . ";</script>";
+    exit();
+}
+
+
 if( !isForgotPasswordOptionEnabled() ) {
     redirect(PAGE_NAME_LOGIN . WEBSITE_LINK_ENDS_WITH);
     exit();
@@ -31,8 +43,7 @@ $sql = "SELECT user_id, password_reset_expiry, email FROM users WHERE password_r
 $result_set = selectQuery( $sql );
 if( ($result_set === NULL) 
         || (mysqli_num_rows( $result_set ) == 0) ){
-    alert( "Password Reset Link has been expired, please redo the password reset process again on the Forgot Password Page" );
-    redirect( PAGE_LOGIN );
+    passwordResetLinkExpired();
     exit();
 }
 
@@ -41,8 +52,7 @@ $password_reset_expiry = $val->password_reset_expiry;
 $current_time = currentTimeMilliseconds();
 
 if( isPasswordResetValidityExpired( $current_time, $password_reset_expiry ) ){
-    alert( "Password Reset Link has been expired, please redo the password reset process again on the Forgot Password Page" );
-    redirect( PAGE_LOGIN );
+    passwordResetLinkExpired();
     exit();
 }
 
