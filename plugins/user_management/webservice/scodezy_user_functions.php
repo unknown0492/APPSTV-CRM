@@ -237,6 +237,18 @@ function scodezy_create_user(){
         
 }
 
+/**
+ * @description user_id of the signed-in user, from the access token (sign-in no longer keeps it in the PHP session,
+ *              so reading $_SESSION printed a PHP warning before the answer) (1.0.11)
+ * @returns {string} user_id, '' when unknown
+ */
+function scodezyUsersCurrentUserId(){
+    global $globalAccessToken;
+    $payload = getJWTPayload( $globalAccessToken );
+    if( is_array( $payload ) && isset( $payload[ SESSION_USER_ID ] ) ){ return (string) $payload[ SESSION_USER_ID ]; }
+    return isset( $_SESSION[ SESSION_USER_ID ] ) ? (string) $_SESSION[ SESSION_USER_ID ] : '';
+}
+
 function scodezy_delete_user(){
     checkAuthorizationForFunction( __FUNCTION__ );
     
@@ -250,7 +262,7 @@ function scodezy_delete_user(){
     $e_user_id = escape_string( $user_id );
     
     // Check if the user_id belongs to self
-    $self_user_id = $_SESSION[ SESSION_USER_ID ];
+    $self_user_id = scodezyUsersCurrentUserId();                // From the access token (1.0.11)
     if( $e_user_id === $self_user_id ){
         echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "You cannot delete your own User Account !" );
         return;
@@ -282,7 +294,7 @@ function scodezy_delete_user(){
         
         $data = array(
             "info" => "User has been deleted",
-            "data" => $user
+            "data" => array( "user_id" => $user[ 'user_id' ], "role_id" => $user[ 'role_id' ] )   // Not the whole row: it held the password hash and keys (1.0.11)
         );
         echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, $data );
         return;
@@ -311,7 +323,7 @@ function scodezy_delete_users(){
         validate( $value, __FUNCTION__, getValidationRegex( "VLDTN_USER_ID" ), "User ID is invalid !" );
         
         // Check if the user_id belongs to self
-        $self_user_id = $_SESSION[ SESSION_USER_ID ];
+        $self_user_id = scodezyUsersCurrentUserId();            // From the access token (1.0.11)
         if( $value === $self_user_id ){
             echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "You cannot delete your own User Account. Please deselect your User ID from the selection and try again" );
             return;
@@ -343,7 +355,7 @@ function scodezy_delete_users(){
     }
     $fetchedUsers = array();
     while( ( $val = mysqli_fetch_assoc( $result_set ) ) != NULL ){
-        $fetchedUsers[] = $val;
+        $fetchedUsers[] = array( "user_id" => $val[ 'user_id' ], "role_id" => $val[ 'role_id' ] );   // No password hash / keys in the answer (1.0.11)
     }
     
     $sql = "DELETE FROM users WHERE user_id IN ($user_ids_recomposed)";
