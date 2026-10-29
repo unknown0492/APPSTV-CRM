@@ -7,4 +7,5 @@
         <link href="assets/plugins/global/plugins.bundle.css" rel="stylesheet" type="text/css" />
         <link href="assets/css/style.bundle.css" rel="stylesheet" type="text/css" />
         <link href="assets/scodezy/css/core.css" rel="stylesheet" type="text/css" />
+        <link href="assets/scodezy/css/scrollbar.css?v=<?= @filemtime( BASE_PATH . '/assets/scodezy/css/scrollbar.css' ) ?>" rel="stylesheet" type="text/css" /><!-- Slim scrollbars (1.0.65) -->
         <!-- GLOBAL MANDATORY STYLES - End -->

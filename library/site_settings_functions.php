@@ -165,6 +165,9 @@ function siteSigninBackgroundType(){
  * @returns {void}
  */
 function siteSigninHead(){
+    // Slim scrollbars like the admin panel (1.0.65)
+    echo '<link href="assets/scodezy/css/scrollbar.css?v=' . @filemtime( BASE_PATH . '/assets/scodezy/css/scrollbar.css' ) . '" rel="stylesheet" type="text/css" />' . "
+";
     $type = siteSigninBackgroundType();
     if( $type === 'none' ){
         // The page's built-in background: nothing to add
