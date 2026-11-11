@@ -1,8 +1,53 @@
 <?php
 
 $functionality_types = array(
-    "CREATE", 'READ', 'UPDATE', 'DELETE', 'ACCESS'
+    "CREATE", 'READ', 'UPDATE', 'DELETE', 'ACCESS', 'SELECT'
 );
+
+// Who calls a functionality (1.0.107): people in the admin panel, machines (TVs, hotel PC, cron ...), or anyone before signing in
+$functionality_audiences = array( 'user', 'system', 'public' );
+
+// Allowed feature group names (1.0.107); the same pattern is on the form fields
+define( 'SCODEZY_FEATURE_GROUP_PATTERN', "/^[A-Za-z0-9 &\\-\\/().,']{1,100}$/" );
+
+/**
+ * @description Reads and validates the feature_group and audience request parameters (1.0.107). Ends the request
+ *              with an error message when one is wrong. Missing parameters give "" and "user".
+ * @param {string} fn - Calling webservice function, for the error messages
+ * @returns {array} [ escaped feature_group, escaped audience ]
+ */
+function scodezyFunctionalityGroupParams( $fn ){
+    global $functionality_audiences;
+    $feature_group = trim( (string) request( 'feature_group' ) );   // "Carousel", "Home Screen" ...
+    $audience      = (string) request( 'audience' );                // user / system / public
+    if( $audience === '' ){
+        $audience = 'user';
+    }
+    // Letters, digits, spaces and & - / ( ) . , ' only, at most 100 (it is a label shown in the Role editor)
+    if( ( $feature_group !== '' ) && !preg_match( SCODEZY_FEATURE_GROUP_PATTERN, $feature_group ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, $fn, "Feature group can have letters, digits, spaces and & - / ( ) . , ' only, at most 100 characters" );
+        exit();
+    }
+    if( !in_array( $audience, $functionality_audiences, true ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, $fn, "Audience is invalid" );
+        exit();
+    }
+    return array( escape_string( $feature_group ), escape_string( $audience ) );
+}
+
+/**
+ * @description SET part for feature_group and audience in an UPDATE, only when the request sends them (an older
+ *              form or tool that does not know them keeps the stored values) (1.0.107)
+ * @param {string} fn - Calling webservice function, for the error messages
+ * @returns {string} ", `feature_group`='..', `audience`='..' " or ""
+ */
+function scodezyFunctionalityGroupSet( $fn ){
+    if( !isset( $_REQUEST[ 'feature_group' ] ) && !isset( $_REQUEST[ 'audience' ] ) ){
+        return '';
+    }
+    list( $e_feature_group, $e_audience ) = scodezyFunctionalityGroupParams( $fn );
+    return ", `feature_group`='$e_feature_group', `audience`='$e_audience' ";
+}
 
 function scodezy_get_functionalities(){
     checkAuthorizationForFunction( __FUNCTION__ );
@@ -266,8 +311,9 @@ function scodezy_create_functionality(){
     }
     
     // Insert the value into the table
-    $sql = "INSERT INTO functionalities( `functionality_name`, `alias`, `functionality_description`, `is_page`, `is_a_content`, `plugin_id`, `functionality_type` ) "
-            . "VALUES( '$e_functionality_name', '$e_alias', '$e_functionality_description', '$e_is_page', '$e_is_a_content', '$e_plugin_id', '$e_functionality_type' )";
+    list( $e_feature_group, $e_audience ) = scodezyFunctionalityGroupParams( __FUNCTION__ );     // 1.0.107
+    $sql = "INSERT INTO functionalities( `functionality_name`, `alias`, `functionality_description`, `is_page`, `is_a_content`, `plugin_id`, `functionality_type`, `feature_group`, `audience` ) "
+            . "VALUES( '$e_functionality_name', '$e_alias', '$e_functionality_description', '$e_is_page', '$e_is_a_content', '$e_plugin_id', '$e_functionality_type', '$e_feature_group', '$e_audience' )";
     $rows = insertQuery( $sql );
     if( $rows > 0 ){
         $functionality_id = getAIID();
@@ -358,6 +404,7 @@ function scodezy_update_functionality(){
                 . "`is_a_content`='$e_is_a_content', "
                 . "`plugin_id`='$e_plugin_id', "
                 . "`functionality_type`='$e_functionality_type' "
+                . scodezyFunctionalityGroupSet( __FUNCTION__ )
                 . "WHERE functionality_id='$e_functionality_id'";
     $rows = updateQuery( $sql );
     if( $rows > 0 ){
@@ -378,7 +425,9 @@ function scodezy_update_functionality(){
 
 function scodezy_import_functionalities(){
     checkAuthorizationForFunction( __FUNCTION__ );
-    
+
+    global $functionality_audiences;    // 1.0.107
+
     //print_r( $_REQUEST );
     
     $functionalities_file        = @$_FILES[ 'functionalities_file' ];
@@ -516,12 +565,21 @@ function scodezy_import_functionalities(){
         $e_is_page                      = escape_string( $functionality[ 'is_page' ] );
         $e_is_a_content                 = escape_string( $functionality[ 'is_a_content' ] );
         $e_plugin_id                    = escape_string( $functionality[ 'plugin_id' ] );
-        
+
+        // Feature group and audience (1.0.107): taken from the file when it has them (exports from 1.0.107 on);
+        // an older file keeps the stored values on update and gives "" / "user" on insert
+        $has_group      = isset( $functionality[ 'feature_group' ] ) && is_string( $functionality[ 'feature_group' ] )
+                       && ( trim( $functionality[ 'feature_group' ] ) === '' || preg_match( SCODEZY_FEATURE_GROUP_PATTERN, trim( $functionality[ 'feature_group' ] ) ) );
+        $has_audience   = isset( $functionality[ 'audience' ] ) && in_array( $functionality[ 'audience' ], $functionality_audiences, true );
+        $e_feature_group = escape_string( $has_group ? substr( trim( $functionality[ 'feature_group' ] ), 0, 100 ) : '' );
+        $e_audience      = escape_string( $has_audience ? $functionality[ 'audience' ] : 'user' );
+        $group_set       = ( $has_group ? ", `feature_group`='$e_feature_group'" : '' ) . ( $has_audience ? ", `audience`='$e_audience'" : '' );
+
         $sql = "SELECT functionality_name FROM functionalities WHERE functionality_name='$e_functionality_name'";
         $result_set = selectQuery( $sql );
         if( mysqli_num_rows( $result_set ) == 0 ){
-            $sql = "INSERT INTO functionalities( `functionality_name`, `alias`, `functionality_description`, `is_page`, `is_a_content`, `plugin_id`, `functionality_type` ) "
-                    . "VALUES( '$e_functionality_name', '$e_alias', '$e_functionality_description', '$e_is_page', '$e_is_a_content', '$e_plugin_id', '$e_functionality_type' )";
+            $sql = "INSERT INTO functionalities( `functionality_name`, `alias`, `functionality_description`, `is_page`, `is_a_content`, `plugin_id`, `functionality_type`, `feature_group`, `audience` ) "
+                    . "VALUES( '$e_functionality_name', '$e_alias', '$e_functionality_description', '$e_is_page', '$e_is_a_content', '$e_plugin_id', '$e_functionality_type', '$e_feature_group', '$e_audience' )";
             $rows = insertQuery( $sql );
             if( $rows > 0 ){
                 $functionalities_imported_count++;
@@ -537,7 +595,8 @@ function scodezy_import_functionalities(){
                         . "`is_page`='$e_is_page', "
                         . "`is_a_content`='$e_is_a_content', "
                         . "`plugin_id`='$e_plugin_id', "
-                        . "`functionality_type`='$e_functionality_type' "
+                        . "`functionality_type`='$e_functionality_type'"
+                        . $group_set . " "
                         . "WHERE functionality_name='$e_functionality_name'";
             $rows = updateQuery( $sql );
             if( $rows > 0 ){

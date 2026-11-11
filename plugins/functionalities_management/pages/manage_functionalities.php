@@ -67,6 +67,7 @@ if( !hasAuthorization( 'manage_functionalities' ) ){
                                 </th>
                                 <th class="min-w-175px">Alias</th>
                                 <th class="min-w-175px">Functionality Name</th>
+                                <th class="min-w-150px">Feature group</th>
                                 <th class="min-w-100px">Type</th>
                                 <th class="min-w-50px">Is A Page</th>
                                 <th class="min-w-50px">Is A Content</th>
@@ -163,6 +164,9 @@ if( !hasAuthorization( 'manage_functionalities' ) ){
     <!--end::Container-->
 </div>
 <!--end::Post-->
+
+<!-- Feature group suggestions for the Create / Edit modals, filled from the table (1.0.107) -->
+<datalist id="list_feature_groups"></datalist>
 
 <!-- Modal - Create functionality BEGINS -->
 <div class="modal fade " tabindex="-1" id="modal_create_functionality">
@@ -327,10 +331,37 @@ if( !hasAuthorization( 'manage_functionalities' ) ){
                                         ACCESS
                                     </label>
                                     <!--end::Radio-->
+
+                                    <!--begin::Radio-->
+                                    <label class="btn btn-outline btn-color-muted btn-active-dark" data-kt-button="true">
+                                        <input id="radio_type_select_c" class="btn-check radio_functionality_type_c" type="radio" name="radio_functionality_type_c" value="SELECT" />
+                                        SELECT
+                                    </label>
+                                    <!--end::Radio-->
                                 </div>
                                 <!--end::Radio group-->
                             </div>
-                            
+
+                            <!-- Feature group and audience: how the Role editor groups and flags it (1.0.107) -->
+                            <div class="form-floating mt-10 mb-7">
+                                <input type="text" class="form-control rounded form-control-solid" id="input_feature_group_c" name="input_feature_group_c"
+                                       placeholder="Feature group" list="list_feature_groups" maxlength="100" autocomplete="off"
+                                       data-parsley-pattern="^[A-Za-z0-9 &amp;\-\/().,']{1,100}$"
+                                       data-parsley-errors-container="#input_feature_group_c_error"
+                                       data-parsley-error-message="Letters, digits, spaces and &amp; - / ( ) . , ' only"
+                                       data-parsley-trigger="keyup | blur" />
+                                <label for="input_feature_group_c">Feature group (e.g. Carousel)</label>
+                                <div id="input_feature_group_c_error" class="scodezy-error-msg"></div>
+                            </div>
+                            <div class="form-floating">
+                                <select class="form-select rounded form-select-solid" id="select_audience_c" name="select_audience_c">
+                                    <option value="user">User (people)</option>
+                                    <option value="system">System (machines)</option>
+                                    <option value="public">Public (before sign-in)</option>
+                                </select>
+                                <label for="select_audience_c">Audience</label>
+                            </div>
+
                         </div>
                         
                     </div>
@@ -528,10 +559,37 @@ if( !hasAuthorization( 'manage_functionalities' ) ){
                                         ACCESS
                                     </label>
                                     <!--end::Radio-->
+
+                                    <!--begin::Radio-->
+                                    <label class="btn btn-outline btn-color-muted btn-active-dark" data-kt-button="true">
+                                        <input id="radio_type_select_e" class="btn-check radio_functionality_type_e" type="radio" name="radio_functionality_type_e" value="SELECT" />
+                                        SELECT
+                                    </label>
+                                    <!--end::Radio-->
                                 </div>
                                 <!--end::Radio group-->
                             </div>
-                            
+
+                            <!-- Feature group and audience: how the Role editor groups and flags it (1.0.107) -->
+                            <div class="form-floating mt-10 mb-7">
+                                <input type="text" class="form-control rounded form-control-solid" id="input_feature_group_e" name="input_feature_group_e"
+                                       placeholder="Feature group" list="list_feature_groups" maxlength="100" autocomplete="off"
+                                       data-parsley-pattern="^[A-Za-z0-9 &amp;\-\/().,']{1,100}$"
+                                       data-parsley-errors-container="#input_feature_group_e_error"
+                                       data-parsley-error-message="Letters, digits, spaces and &amp; - / ( ) . , ' only"
+                                       data-parsley-trigger="keyup | blur" />
+                                <label for="input_feature_group_e">Feature group (e.g. Carousel)</label>
+                                <div id="input_feature_group_e_error" class="scodezy-error-msg"></div>
+                            </div>
+                            <div class="form-floating">
+                                <select class="form-select rounded form-select-solid" id="select_audience_e" name="select_audience_e">
+                                    <option value="user">User (people)</option>
+                                    <option value="system">System (machines)</option>
+                                    <option value="public">Public (before sign-in)</option>
+                                </select>
+                                <label for="select_audience_e">Audience</label>
+                            </div>
+
                         </div>
                         
                     </div>

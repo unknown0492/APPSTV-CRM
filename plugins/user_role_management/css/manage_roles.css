@@ -1,0 +1,87 @@
+/* plugins/user_role_management/css/manage_roles.css - Create / Edit Role permission editor (gen3 1.0.107) */
+
+.rpe-dialog { max-width: min( 1240px, calc( 100vw - 32px ) ); }
+.rpe-dialog .modal-body { padding-top: 20px; }
+
+/* Toolbar: search, filters, expand / collapse - stays on top while the tree scrolls */
+.rpe-toolbar { position: sticky; top: -20px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin: 0 -2px; padding: 10px 2px; background: var(--bs-body-bg); border-bottom: 1px solid var(--bs-gray-200); }
+.rpe-search { position: relative; flex: 1 1 260px; min-width: 200px; }
+.rpe-search i { position: absolute; left: 12px; top: 50%; transform: translateY( -50% ); color: var(--bs-gray-500); font-size: 0.85rem; pointer-events: none; }
+.rpe-search input { padding-left: 34px; }
+.rpe-toolbar .form-select { width: auto; flex: 0 0 auto; min-width: 140px; }
+.rpe-toolbar-actions { display: flex; gap: 6px; margin-left: auto; }
+
+/* Summary line and warnings */
+.rpe-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 10px 2px; font-size: 0.92rem; color: var(--bs-gray-700); }
+.rpe-summary-warnings { margin-left: auto; font-weight: 600; }
+.rpe-warnings { margin-bottom: 12px; border: 1px solid var(--bs-gray-300); border-radius: 8px; overflow: hidden; }
+.rpe-warning { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; font-size: 0.88rem; border-bottom: 1px solid var(--bs-gray-200); }
+.rpe-warning:last-child { border-bottom: 0; }
+.rpe-warning > i { margin-top: 3px; flex: 0 0 auto; }
+.rpe-warning > span { flex: 1 1 auto; }
+.rpe-warning .rpe-warning-go { flex: 0 0 auto; }
+.rpe-warning-danger { background: var(--bs-light-danger); }
+
+/* Tree */
+.rpe-tree { min-height: 120px; }
+.rpe-hidden { display: none !important; }
+.rpe-section-machine { margin-top: 22px; padding-top: 14px; border-top: 2px dashed var(--bs-gray-300); }
+.rpe-section-head { font-weight: 700; font-size: 1rem; color: var(--bs-gray-800); margin-bottom: 10px; }
+.rpe-section-note { font-weight: 400; font-size: 0.85rem; color: var(--bs-gray-600); margin-top: 4px; }
+
+.rpe-plugin { border: 1px solid var(--bs-gray-300); border-radius: 8px; margin-bottom: 8px; background: var(--bs-body-bg); }
+.rpe-plugin-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; }
+.rpe-plugin.rpe-open > .rpe-plugin-head { border-bottom: 1px solid var(--bs-gray-200); background: var(--bs-gray-100); border-radius: 8px 8px 0 0; }
+.rpe-toggle { border: 0; background: transparent; padding: 0; width: 20px; color: var(--bs-gray-600); line-height: 1; }
+.rpe-toggle i { transition: transform 0.15s; }
+.rpe-plugin.rpe-open .rpe-toggle i { transform: rotate( 90deg ); }
+.rpe-plugin-name { font-weight: 600; color: var(--bs-gray-800); cursor: pointer; flex: 1 1 auto; min-width: 0; }
+.rpe-plugin-body { display: none; padding: 4px 12px 10px 42px; }
+.rpe-plugin.rpe-open > .rpe-plugin-body { display: block; }
+
+.rpe-group { padding: 8px 0; }
+/* Divider only between groups that are shown (filters hide some) */
+.rpe-group:not(.rpe-hidden) ~ .rpe-group:not(.rpe-hidden) { border-top: 1px dashed var(--bs-gray-200); }
+/* "Show" on a warning scrolls here: keep it clear of the sticky toolbar */
+.rpe-plugin, .rpe-group, .rpe-section { scroll-margin-top: 80px; }
+.rpe-group-head { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.rpe-group-name { font-weight: 600; font-size: 0.92rem; color: var(--bs-gray-700); }
+.rpe-group-actions { display: flex; gap: 4px; margin-left: auto; }
+.rpe-group-actions .btn { padding: 2px 9px !important; font-size: 0.78rem; }
+.rpe-flash { animation: rpe-flash 1.6s ease-out; }
+@keyframes rpe-flash { 0% { background: var(--bs-light-warning ); } 100% { background: transparent; } }
+
+/* Count badge: grey none, amber part, green all */
+.rpe-count { flex: 0 0 auto; min-width: 52px; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; text-align: center;
+    background: var(--bs-gray-200); color: var(--bs-gray-700); }
+.rpe-count.rpe-count-part { background: var(--bs-light-warning); color: var(--bs-warning-active, #b54708); }
+.rpe-count.rpe-count-full { background: var(--bs-light-success); color: var(--bs-success-active, #067647); }
+
+/* Functionalities: two columns on wide screens */
+.rpe-items { display: grid; grid-template-columns: repeat( auto-fill, minmax( 320px, 1fr ) ); gap: 2px 18px; padding: 6px 0 0 28px; }
+.rpe-item { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 2px 6px; border-radius: 6px; cursor: pointer; margin: 0; }
+.rpe-item:hover { background: var(--bs-gray-100); }
+.rpe-item-alias { flex: 1 1 auto; min-width: 0; font-size: 0.88rem; color: var(--bs-gray-800); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rpe-page { color: var(--bs-primary); font-size: 0.8rem; }
+.rpe-info { color: var(--bs-gray-500); }
+.rpe-check { flex: 0 0 auto; width: 1.2rem !important; height: 1.2rem !important; cursor: pointer; margin: 0 !important; }
+
+/* Type badges */
+.rpe-type { flex: 0 0 auto; width: 58px; padding: 1px 0; border-radius: 4px; font-size: 0.66rem; font-weight: 700; text-align: center; letter-spacing: 0.02em; }
+.rpe-type-ACCESS { background: var(--bs-light-primary); color: var(--bs-primary); }
+.rpe-type-READ   { background: var(--bs-light-success); color: var(--bs-success); }
+.rpe-type-SELECT { background: var(--bs-gray-200); color: var(--bs-gray-800); }
+.rpe-type-CREATE { background: var(--bs-light-info); color: var(--bs-info); }
+.rpe-type-UPDATE { background: var(--bs-light-warning); color: var(--bs-warning); }
+.rpe-type-DELETE { background: var(--bs-light-danger); color: var(--bs-danger); }
+
+@media ( max-width: 767.98px ){
+    .rpe-toolbar .form-select { flex: 1 1 calc( 50% - 8px ); }
+    .rpe-toolbar-actions { margin-left: 0; width: 100%; }
+    .rpe-toolbar-actions .btn { flex: 1 1 0; }
+    .rpe-plugin-body { padding-left: 12px; }
+    .rpe-items { grid-template-columns: 1fr; padding-left: 0; }
+    .rpe-group-head { flex-wrap: wrap; }
+    .rpe-group-actions { margin-left: 0; width: 100%; }
+}

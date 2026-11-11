@@ -3,6 +3,7 @@ checkAuthorizationForPage( 'manage_roles' );
 ?>
 
 <link href="assets/plugins/custom/datatables/datatables.bundle.css" rel="stylesheet" type="text/css"/>
+<link href="plugins/<?=$plugin_name ?>/css/manage_roles.css?v=<?= rawurlencode( trim( (string) @file_get_contents( BASE_PATH . '/VERSION' ) ) ) ?>" rel="stylesheet" type="text/css"/>
 
 <!--begin::Post-->
 <div class="post d-flex flex-column-fluid" id="kt_post">
@@ -131,263 +132,138 @@ checkAuthorizationForPage( 'manage_roles' );
 </div>
 <!--end::Post-->
 
-<!-- Modal - Create Role Modal BEGINS -->
-<div class="modal fade " tabindex="-1" id="modal_create_role">
-    <div class="modal-dialog modal-lg">
-        <form name="form_create_role" id="form_create_role" method="POST" data-parsley-validate>
-            <div class="modal-content rounded">
-                <div class="modal-header">
-                    <h3 class="modal-title">Create Role</h3>
-
-                    <!--begin::Close-->
-                    <div class="btn btn-icon btn-sm btn-active-light-primary ms-2" data-bs-dismiss="modal" aria-label="Close">
-                        <i class="ki-duotone ki-cross fs-1"><span class="path1"></span><span class="path2"></span></i>
-                    </div>
-                    <!--end::Close-->
+<?php
+/**
+ * Create Role and Edit Role modals (1.0.107): name, slug, "Copy from role", and the permission editor
+ * (js/role_permissions_editor.js) - every functionality grouped by plugin and feature, with search and filters,
+ * tri-state plugin / group checkboxes, View only / Full buttons per group, warnings and a save summary.
+ * Both modals use the same markup; the suffix c (create) / e (edit) keeps the element IDs of the older code.
+ */
+$rpe_modals = array(
+    'c' => array( 'modal' => 'modal_create_role', 'form' => 'form_create_role', 'title' => 'Create Role',
+                  'submit' => 'btn_create_functionality', 'submit_text' => 'Create', 'cancel' => 'btn_cancel_create_role_modal' ),
+    'e' => array( 'modal' => 'modal_edit_role', 'form' => 'form_edit_role', 'title' => 'Edit Role',
+                  'submit' => 'btn_update_role', 'submit_text' => 'Update', 'cancel' => 'btn_cancel_edit_role_modal' )
+);
+foreach( $rpe_modals as $sfx => $m ):
+?>
+<!-- Modal - <?= $m[ 'title' ] ?> BEGINS -->
+<div class="modal fade" tabindex="-1" id="<?= $m[ 'modal' ] ?>" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable rpe-dialog">
+        <form name="<?= $m[ 'form' ] ?>" id="<?= $m[ 'form' ] ?>" method="POST" class="modal-content rounded" data-parsley-validate onsubmit="return false;">
+            <div class="modal-header">
+                <h3 class="modal-title"><?= $m[ 'title' ] ?><span class="rpe-title-role text-gray-500 fw-normal ms-2"></span></h3>
+                <div class="btn btn-icon btn-sm btn-active-light-primary ms-2" data-bs-dismiss="modal" aria-label="Close">
+                    <i class="ki-duotone ki-cross fs-1"><span class="path1"></span><span class="path2"></span></i>
                 </div>
+            </div>
 
-                <div class="modal-body">
-                    <div class="row row-cols-2">
-                        <div class="col">
-                            <!-- Role Name -->
-                            <div class="form-floating mb-7">
-                                <input type="text" class="form-control rounded form-control-solid" id="input_role_name_c" name="input_role_name_c" 
-                                       placeholder="Provide a unique name for the Role" 
-                                        value=""
-                                        required
-                                        data-parsley-required="true"
-                                        data-parsley-errors-container="#input_role_name_c_error" 
-                                        autocomplete="off" 
-                                        data-parsley-pattern="<?=getValidationRegex( 'VLDTN_ROLE_NAME' ) ?>"
-                                        data-parsley-error-message="Only lowercase, uppercase alphabets, digits 0 to 9 and white spaces are allowed"
-                                        data-parsley-trigger="keyup | blur" />
-                                <label for="input_role_name_c">Role Name*</label>
-                                <div id="input_role_name_c_error" class="scodezy-error-msg"></div>
-                            </div>
-                            
-                            <!-- Role Slug -->
-                            <div class="form-floating mb-7">
-                                <input type="text" class="form-control rounded form-control-solid" id="input_role_slug_c" name="input_role_slug_c" 
-                                       placeholder="Enter a unique slug for the Role" 
-                                        value=""
-                                        required
-                                        data-parsley-required="true"
-                                        data-parsley-errors-container="#input_role_slug_c_error" 
-                                        autocomplete="off" 
-                                        data-parsley-pattern="<?=getValidationRegex( 'VLDTN_ROLE_SLUG' ) ?>"
-                                        data-parsley-error-message="Only lowercase alphabets, digits 0 to 9 and (underscore) _ are allowed"
-                                        data-parsley-trigger="keyup | blur" />
-                                <label for="input_role_slug_c">Role Slug*</label>
-                                <div id="input_role_slug_c_error" class="scodezy-error-msg"></div>
-                            </div>
-                            
-                            <!-- Plugin Selection -->
-                            <div class="input-group input-group-solid flex-nowrap mb-7">
-                                <div class="overflow-hidden flex-grow-1">
-                                    <select id="select_plugin_c" class="form-select form-select-solid rounded h-50px" data-control="select2" data-placeholder="Select a plugin*" data-search="true"
-                                            data-dropdown-parent="#modal_create_role" data-dropdown-parent="body" >
-                                        <option></option>
-                                    </select>
-                                </div>
-                                <span class="input-group-text h-50px border-start">
-                                    <button type="button" class="btn btn-default" id="btn_refresh_plugins_c">
-                                        <span class="indicator-label">
-                                            <i class="fa-solid fa-arrows-rotate "> </i>
-                                        </span>
-                                        <span class="indicator-progress">
-                                            <span class="spinner-border spinner-border-sm align-middle ms-2"></span>
-                                        </span>
-                                    </button>
-                                </span>
-                            </div>
-                            
-                            <!-- Filter Functionality Type -->
-                            <div class="div_functionality_type_c">
-                                <select id="select_functionality_type_c" class="form-select form-select-solid rounded h-50px" data-control="select2" data-placeholder="Filter Functionality Type" data-search="true"
-                                        data-dropdown-parent="#modal_create_role" data-dropdown-parent="body">
-                                    <option></option>
-                                    <option value="ALL">ALL</option>
-                                    <option value="CREATE">CREATE</option>
-                                    <option value="READ">READ</option>
-                                    <option value="UPDATE">UPDATE</option>
-                                    <option value="DELETE">DELETE</option>
-                                    <option value="ACCESS">ACCESS</option>
-                                </select>
-                            </div>
-                                
-                            
-                            
+            <div class="modal-body">
+                <?php if( $sfx === 'e' ): ?>
+                <input type="hidden" name="hidden_role_id_e" id="hidden_role_id_e" value="" />
+                <?php endif; ?>
+
+                <!-- Role name, slug, copy from role -->
+                <div class="row g-5 mb-6">
+                    <div class="col-md-4">
+                        <div class="form-floating">
+                            <input type="text" class="form-control rounded form-control-solid" id="input_role_name_<?= $sfx ?>" name="input_role_name_<?= $sfx ?>"
+                                   placeholder="Provide a unique name for the Role" value="" required autocomplete="off"
+                                   data-parsley-required="true"
+                                   data-parsley-errors-container="#input_role_name_<?= $sfx ?>_error"
+                                   data-parsley-pattern="<?=getValidationRegex( 'VLDTN_ROLE_NAME' ) ?>"
+                                   data-parsley-error-message="Only lowercase, uppercase alphabets, digits 0 to 9 and white spaces are allowed"
+                                   data-parsley-trigger="keyup | blur" />
+                            <label for="input_role_name_<?= $sfx ?>">Role Name*</label>
+                            <div id="input_role_name_<?= $sfx ?>_error" class="scodezy-error-msg"></div>
                         </div>
-                        
-                        <div class="col">
-                            <!-- Select functionalities -->
-                            <label class="label text-gray-500 fs-6 me-5 me-10 mb-10 mt-0" for="">
-                                Choose functionalities for the Role
-                            </label>
-                            
-                            <div class="div_check_functionalities_c ms-5 scroll h-200px">
-                            </div>
-                            
-                            
-                            
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-floating">
+                            <input type="text" class="form-control rounded form-control-solid" id="input_role_slug_<?= $sfx ?>" name="input_role_slug_<?= $sfx ?>"
+                                   placeholder="Enter a unique slug for the Role" value="" required autocomplete="off"
+                                   data-parsley-required="true"
+                                   data-parsley-errors-container="#input_role_slug_<?= $sfx ?>_error"
+                                   data-parsley-pattern="<?=getValidationRegex( 'VLDTN_ROLE_SLUG' ) ?>"
+                                   data-parsley-error-message="Only lowercase alphabets, digits 0 to 9 and (underscore) _ are allowed"
+                                   data-parsley-trigger="keyup | blur" />
+                            <label for="input_role_slug_<?= $sfx ?>">Role Slug*</label>
+                            <div id="input_role_slug_<?= $sfx ?>_error" class="scodezy-error-msg"></div>
                         </div>
-                        
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-floating">
+                            <select class="form-select rounded form-select-solid rpe-copy" id="select_copy_role_<?= $sfx ?>" aria-label="Copy functionalities from a role">
+                                <option value="">-</option>
+                            </select>
+                            <label for="select_copy_role_<?= $sfx ?>">Copy functionalities from role</label>
+                        </div>
                     </div>
                 </div>
 
-                <div class="modal-footer">
-                    <button type="reset" id="btn_cancel_create_role_modal" class="btn btn-light rounded">Reset</button>
-                    <!--begin::Submit button-->
-                    <div class="d-grid ">
-                        <button type="button" id="btn_create_functionality" class="btn btn-primary rounded">
-                            <!--begin::Indicator label-->
-                            <span class="indicator-label">Submit</span>
-                            <!--end::Indicator label-->
-
-                            <!--begin::Indicator progress-->
-                            <span class="indicator-progress">Please wait... 
-                            <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
-                            <!--end::Indicator progress-->
-                        </button>
+                <!-- Permission editor -->
+                <div class="rpe" id="rpe_<?= $sfx ?>">
+                    <div class="rpe-toolbar">
+                        <div class="rpe-search">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="search" class="form-control form-control-sm form-control-solid rpe-filter-text" placeholder="Search name, alias, feature or description" aria-label="Search functionalities" />
+                        </div>
+                        <select class="form-select form-select-sm form-select-solid rpe-filter-plugin" aria-label="Plugin">
+                            <option value="">All plugins</option>
+                        </select>
+                        <select class="form-select form-select-sm form-select-solid rpe-filter-type" aria-label="Type">
+                            <option value="">All types</option>
+                            <option value="ACCESS">ACCESS</option>
+                            <option value="CREATE">CREATE</option>
+                            <option value="READ">READ</option>
+                            <option value="UPDATE">UPDATE</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="SELECT">SELECT</option>
+                        </select>
+                        <select class="form-select form-select-sm form-select-solid rpe-filter-show" aria-label="Show">
+                            <option value="">All</option>
+                            <option value="granted">Granted</option>
+                            <option value="missing">Not granted</option>
+                        </select>
+                        <div class="rpe-toolbar-actions">
+                            <button type="button" class="btn btn-sm btn-light rpe-expand-all" title="Open every plugin">Expand all</button>
+                            <button type="button" class="btn btn-sm btn-light rpe-collapse-all" title="Close every plugin">Collapse all</button>
+                        </div>
                     </div>
-                    <!--end::Submit button-->
-                </div>
 
+                    <div class="rpe-summary">
+                        <span class="rpe-summary-count"></span>
+                        <span class="rpe-summary-change"></span>
+                        <button type="button" class="btn btn-link btn-sm p-0 rpe-summary-warnings d-none"></button>
+                    </div>
+
+                    <div class="rpe-warnings d-none" role="alert"></div>
+
+                    <div class="rpe-tree">
+                        <div class="rpe-loading text-center text-gray-500 py-10">
+                            <span class="spinner-border spinner-border-sm me-2"></span>Loading functionalities...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" id="<?= $m[ 'cancel' ] ?>" class="btn btn-light rounded">Cancel</button>
+                <button type="button" id="<?= $m[ 'submit' ] ?>" class="btn btn-primary rounded">
+                    <span class="indicator-label"><?= $m[ 'submit_text' ] ?></span>
+                    <span class="indicator-progress">Please wait...
+                        <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
+                </button>
             </div>
         </form>
     </div>
 </div>
-<!-- Modal - Create Role Modal ENDS-->
+<!-- Modal - <?= $m[ 'title' ] ?> ENDS -->
+<?php endforeach; ?>
 
-
-
-<!-- Modal - Edit Role Modal BEGINS -->
-<div class="modal fade " tabindex="-1" id="modal_edit_role">
-    <div class="modal-dialog modal-lg">
-        <form name="form_edit_role" id="form_edit_role" method="POST" data-parsley-validate>
-            <div class="modal-content rounded">
-                <div class="modal-header">
-                    <h3 class="modal-title">Edit Role</h3>
-
-                    <!--begin::Close-->
-                    <div class="btn btn-icon btn-sm btn-active-light-primary ms-2" data-bs-dismiss="modal" aria-label="Close">
-                        <i class="ki-duotone ki-cross fs-1"><span class="path1"></span><span class="path2"></span></i>
-                    </div>
-                    <!--end::Close-->
-                </div>
-
-                <div class="modal-body">
-                    <div class="row row-cols-2">
-                        <div class="col">
-                            
-                            <input type="hidden" name="hidden_role_id_e" id="hidden_role_id_e" value="" />
-                            
-                            <!-- Role Name -->
-                            <div class="form-floating mb-7">
-                                <input type="text" class="form-control rounded form-control-solid" id="input_role_name_e" name="input_role_name_e" 
-                                       placeholder="Provide a unique name for the Role" 
-                                        value=""
-                                        required
-                                        data-parsley-required="true"
-                                        data-parsley-errors-container="#input_role_name_e_error" 
-                                        autocomplete="off" 
-                                        data-parsley-pattern="<?=getValidationRegex( 'VLDTN_ROLE_NAME' ) ?>"
-                                        data-parsley-error-message="Only lowercase, uppercase alphabets, digits 0 to 9 and white spaces are allowed"
-                                        data-parsley-trigger="keyup | blur" />
-                                <label for="input_role_name_e">Role Name*</label>
-                                <div id="input_role_name_e_error" class="scodezy-error-msg"></div>
-                            </div>
-                            
-                            <!-- Role Slug -->
-                            <div class="form-floating mb-7">
-                                <input type="text" class="form-control rounded form-control-solid" id="input_role_slug_e" name="input_role_slug_e" 
-                                       placeholder="Enter a unique slug for the Role" 
-                                        value=""
-                                        required
-                                        data-parsley-required="true"
-                                        data-parsley-errors-container="#input_role_slug_e_error" 
-                                        autocomplete="off" 
-                                        data-parsley-pattern="<?=getValidationRegex( 'VLDTN_ROLE_SLUG' ) ?>"
-                                        data-parsley-error-message="Only lowercase alphabets, digits 0 to 9 and (underscore) _ are allowed"
-                                        data-parsley-trigger="keyup | blur" />
-                                <label for="input_role_slug_e">Role Slug*</label>
-                                <div id="input_role_slug_e_error" class="scodezy-error-msg"></div>
-                            </div>
-                            
-                            <!-- Plugin Selection -->
-                            <div class="input-group input-group-solid flex-nowrap mb-7">
-                                <div class="overflow-hidden flex-grow-1">
-                                    <select id="select_plugin_e" class="form-select form-select-solid rounded h-50px" data-control="select2" data-placeholder="Select a plugin*" data-search="true"
-                                            data-dropdown-parent="#modal_edit_role" data-dropdown-parent="body" >
-                                        <option></option>
-                                    </select>
-                                </div>
-                                <span class="input-group-text h-50px border-start">
-                                    <button type="button" class="btn btn-default" id="btn_refresh_plugins_e">
-                                        <span class="indicator-label">
-                                            <i class="fa-solid fa-arrows-rotate "> </i>
-                                        </span>
-                                        <span class="indicator-progress">
-                                            <span class="spinner-border spinner-border-sm align-middle ms-2"></span>
-                                        </span>
-                                    </button>
-                                </span>
-                            </div>
-                            
-                            <!-- Filter Functionality Type -->
-                            <div class="div_functionality_type_e">
-                                <select id="select_functionality_type_e" class="form-select form-select-solid rounded h-50px" data-control="select2" data-placeholder="Filter Functionality Type" data-search="true"
-                                        data-dropdown-parent="#modal_edit_role" data-dropdown-parent="body">
-                                    <option></option>
-                                    <option value="ALL">ALL</option>
-                                    <option value="CREATE">CREATE</option>
-                                    <option value="READ">READ</option>
-                                    <option value="UPDATE">UPDATE</option>
-                                    <option value="DELETE">DELETE</option>
-                                    <option value="ACCESS">ACCESS</option>
-                                </select>
-                            </div>
-                            
-                        </div>
-                        
-                        <div class="col">
-                            <!-- Select functionalities -->
-                            <label class="label text-gray-500 fs-6 me-5 me-10 mb-10 mt-0" for="">
-                                Choose functionalities for the Role
-                            </label>
-                            
-                            <div class="div_check_functionalities_e ms-5 scroll h-200px">
-                            </div>
-                            
-                        </div>
-                        
-                    </div>
-                </div>
-
-                <div class="modal-footer">
-                    <button type="reset" id="btn_cancel_edit_role_modal" class="btn btn-light rounded">Cancel</button>
-                    <!--begin::Submit button-->
-                    <div class="d-grid ">
-                        <button type="button" id="btn_update_role" class="btn btn-primary rounded">
-                            <!--begin::Indicator label-->
-                            <span class="indicator-label">Update</span>
-                            <!--end::Indicator label-->
-
-                            <!--begin::Indicator progress-->
-                            <span class="indicator-progress">Please wait... 
-                            <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
-                            <!--end::Indicator progress-->
-                        </button>
-                    </div>
-                    <!--end::Submit button-->
-                </div>
-
-            </div>
-        </form>
-    </div>
-</div>
-<!-- Modal - Edit Role Modal ENDS-->
 
 
 <script src="assets/plugins/custom/datatables/datatables.bundle.js"></script>
-<script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js"></script>
+<?php $rpe_asset_version = rawurlencode( trim( (string) @file_get_contents( BASE_PATH . '/VERSION' ) ) );   // ?v= so browsers load new code after each deploy (1.0.107) ?>
+<script src="plugins/<?=$plugin_name ?>/js/role_permissions_editor.js?v=<?= $rpe_asset_version ?>"></script>
+<script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js?v=<?= $rpe_asset_version ?>"></script>

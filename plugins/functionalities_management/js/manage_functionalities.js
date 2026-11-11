@@ -393,12 +393,16 @@ function create_functionality(){
         if( (val_functionality_type == "") || (typeof val_functionality_type == "undefined") ){
             showSimpleToast( "error", "Please select a functionality type !" );
             return;
-        }   
-        
+        }
+        if( !$( '#input_feature_group_c' ).parsley().isValid() ){
+            showSimpleToast( "error", "Please check the Feature group and try again !" );
+            return;
+        }
+
         var val_functionality_name           = e_functionality_name.val();
         var val_alias                        = e_alias.val();
         var val_functionality_description    = e_functionality_description.val();
-        
+
         // Show Loading Animation on the Button
         btn_submit.attr( 'data-kt-indicator', 'on' );
         disableFormElement( btn_submit );
@@ -411,7 +415,9 @@ function create_functionality(){
             is_page: val_is_page,
             is_a_content: val_is_a_content,
             plugin_id: val_plugin,
-            functionality_type: val_functionality_type
+            functionality_type: val_functionality_type,
+            feature_group: $.trim( $( '#input_feature_group_c' ).val() ),   // 1.0.107
+            audience: $( '#select_audience_c' ).val()                       // 1.0.107
         };
 
         $.ajax({
@@ -664,8 +670,12 @@ function update_functionality(){
         if( (val_functionality_type == "") || (typeof val_functionality_type == "undefined") ){
             showSimpleToast( "error", "Please select a functionality type !" );
             return;
-        }   
-        
+        }
+        if( !$( '#input_feature_group_e' ).parsley().isValid() ){
+            showSimpleToast( "error", "Please check the Feature group and try again !" );
+            return;
+        }
+
         var val_functionality_id             = e_hidden_functionality_id.val();
         var val_functionality_name           = e_functionality_name.val();
         var val_alias                        = e_alias.val();
@@ -684,7 +694,9 @@ function update_functionality(){
             is_page: val_is_page,
             is_a_content: val_is_a_content,
             plugin_id: val_plugin,
-            functionality_type: val_functionality_type
+            functionality_type: val_functionality_type,
+            feature_group: $.trim( $( '#input_feature_group_e' ).val() ),   // 1.0.107
+            audience: $( '#select_audience_e' ).val()                       // 1.0.107
         };
 
         $.ajax({
@@ -699,15 +711,15 @@ function update_functionality(){
                 enableFormElement( btn_submit );
 
                 var jSon = parseJSONWithError( returned_data, "Server Side error occurred ! Contact Technical Support..." );
-                if( jSon == false ){                    
+                if( jSon == false ){
                     return;
                 }
 
                 jSon = jSon[ 0 ];
 
                 if( jSon[ 'type' ] == 'error' ){
-                    //showNotification( "error", "bottomRight", jSon[ 'info' ], 5000, 1 );                    
-                    showSimpleToast( "error", jSon[ 'info' ] );                    
+                    //showNotification( "error", "bottomRight", jSon[ 'info' ], 5000, 1 );
+                    showSimpleToast( "error", jSon[ 'info' ] );
                     //showSimpleSweetAlert( jSon[ 'info' ], "error", "Try Again", "btn btn-primary" );
                     return;
                 }
@@ -717,7 +729,7 @@ function update_functionality(){
 
                     // Add this entry into the pages DataTable if it belongs to the currently selected plugin
                     var value = data.data;
-                    var tr = createRowForDataTable( value ); 
+                    var tr = createRowForDataTable( value );
                     var trToBeRemoved = e_table.find( 'tr[data-functionality-id="'+val_functionality_id+'"]' );
                     DataTable.row( trToBeRemoved ).remove().draw();
                     if( ($( '#select_plugin' ).val() == value.plugin_id) || ($( '#select_plugin' ).val() == "-1") ){               
@@ -854,7 +866,9 @@ function editFunctionality( thees, e ){
                 e_is_a_content.prop( 'checked', (data.is_a_content=="1")?'checked':'' ).trigger( 'change' );
                 e_select_plugin.val( data.plugin_id );
                 e_select_plugin.trigger( 'change.select2' );
-                
+                $( '#input_feature_group_e' ).val( data.feature_group || '' );          // 1.0.107
+                $( '#select_audience_e' ).val( data.audience || 'user' );               // 1.0.107
+
                 var e_radio = "";
                 switch( data.functionality_type ){
                     case "CREATE":
@@ -877,6 +891,10 @@ function editFunctionality( thees, e ){
                         e_radio = $( '#radio_type_access_e' );
                         break;
 
+                    case "SELECT":
+                        e_radio = $( '#radio_type_select_e' );
+                        break;
+
                     default:
                         e_radio = "";
                 }
@@ -894,6 +912,52 @@ function editFunctionality( thees, e ){
     
 }
 
+var knownFeatureGroups = {};       // Feature group names seen in the table, for the suggestions list of the modals (1.0.107)
+
+/**
+ * @description Escapes text for use inside HTML
+ * @param {string} text - Any text
+ * @returns {string} HTML-safe text
+ */
+function fnEscapeHtml( text ){
+    return $( '<div>' ).text( ( text === null || typeof text === 'undefined' ) ? '' : String( text ) ).html();
+}
+
+/**
+ * @description Feature group cell of the table: the group name, with a badge when the audience is not "user" (1.0.107)
+ * @param {object} value - Functionality row from the API
+ * @returns {string} HTML
+ */
+function featureGroupCellHtml( value ){
+    var group    = value.feature_group ? fnEscapeHtml( value.feature_group ) : '<span class="text-muted">-</span>';  // Group text
+    var audience = value.audience || 'user';                                                                       // user / system / public
+    if( audience === 'system' ){
+        group += ' <span class="badge badge-light-warning ms-1">System</span>';
+    }
+    else if( audience === 'public' ){
+        group += ' <span class="badge badge-light-info ms-1">Public</span>';
+    }
+    return group;
+}
+
+/**
+ * @description Adds a feature group name to the suggestions list (datalist) used by the Create / Edit modals (1.0.107)
+ * @param {string} name - Feature group name
+ * @returns {void}
+ */
+function rememberFeatureGroup( name ){
+    if( !name || knownFeatureGroups[ name ] ){
+        return;
+    }
+    knownFeatureGroups[ name ] = true;
+    var names = Object.keys( knownFeatureGroups ).sort();      // Sorted names
+    var html  = '';                                              // <option> list
+    $.each( names, function( i, n ){
+        html += '<option value="' + fnEscapeHtml( n ) + '"></option>';
+    });
+    $( '#list_feature_groups' ).html( html );
+}
+
 // Creates an HTML Element for the Table Row (tr) for the data that have been receveived from the API
 function createRowForDataTable( value ){
     var html = '<tr data-functionality-id="'+value.functionality_id+'">\n';
@@ -903,7 +967,9 @@ function createRowForDataTable( value ){
             '</td>\n';
     html += '<td>' + value.alias + '</td>\n';
     html += '<td>' + value.functionality_name + '</td>\n';
-    
+    html += '<td>' + featureGroupCellHtml( value ) + '</td>\n';     // 1.0.107
+    rememberFeatureGroup( value.feature_group );
+
     var type = value.functionality_type;
     if( type == "" ){
         type = "UNDEFINED";
@@ -935,7 +1001,11 @@ function createRowForDataTable( value ){
         case "ACCESS":
             type_class = 'badge-success';
             break;
-            
+
+        case "SELECT":
+            type_class = 'badge-dark';
+            break;
+
         default:
             type_class = 'badge-danger';
     }
@@ -1257,11 +1327,11 @@ function initDataTable(){
         columnDefs: [
             {// set default column settings
                 orderable: false,
-                targets: [0, 6] // column indexes separated by a comma to which the above attribute should be applied
+                targets: [0, 7] // column indexes separated by a comma to which the above attribute should be applied
             },
             {
                 searchable: false,
-                targets: [0, 6]
+                targets: [0, 7]
             },
             {
                 //className: "dt-right",
