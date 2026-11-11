@@ -1,5 +1,10 @@
 {
     "require": {
-        "shopify/shopify-api": "^5.7"
+        "shopify/shopify-api": "^6.1.1"
+    },
+    "config": {
+        "platform": {
+            "php": "8.1.0"
+        }
     }
 }
