@@ -108,7 +108,6 @@ function create_shopify_webhook(){
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     //curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     $output = curl_exec($ch);
-    curl_close($ch);
 
     $output_json = json_decode( $output, true );
     if( $output_json === NULL ){
@@ -263,7 +262,6 @@ function update_shopify_webhook(){
     //$body = substr($output, $header_size);
     //echo $header;
     //echo $body;
-    curl_close($ch);
 
     $output_json = json_decode( $output, true );
     if( $output_json === NULL ){
@@ -389,7 +387,6 @@ function delete_shopify_webhook(){
     //$body = substr($output, $header_size);
     //echo $header;
     //echo $body;
-    curl_close($ch);
 
     $output_json = json_decode( $output, true );
     if( $output_json === NULL ){

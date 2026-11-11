@@ -146,7 +146,6 @@ function generate_shopify_app_token(){
         curl_setopt($ch, CURLOPT_POST, count($query));
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($query));
         $result = curl_exec($ch);
-        curl_close($ch);
 
         // Store the access token
         $result = json_decode($result, true);
@@ -219,7 +218,6 @@ function shopifyPerformCurlRequest( $params ){
     
     $output = curl_exec( $ch );
     
-    curl_close( $ch );
     
     /*
     $output_arr = json_decode( $output, true );
