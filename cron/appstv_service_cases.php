@@ -120,7 +120,7 @@ function appstv_cron_media(){
     $video_k = max( 100, (int) floor( $total_k * 0.97 ) - $audio_k );
     $made = false;
     for( $try = 0; $try < 2 && !$made; $try++ ){
-        $lines = ( $video_k >= 3500 ) ? 1080 : ( ( $video_k >= 1800 ) ? 720 : ( ( $video_k >= 800 ) ? 480 : 360 ) );
+        $lines = ( $video_k >= 3000 ) ? 1080 : ( ( $video_k >= 1500 ) ? 720 : ( ( $video_k >= 600 ) ? 480 : 360 ) );   // Lines a bitrate keeps sharp
         $lines = min( $lines, $short_side - ( $short_side % 2 ) );
         // Scale the short side to $lines, keep the shape (even sizes for H.264)
         $scale = ( $w >= $h ) ? "scale=-2:$lines" : "scale=$lines:-2";
