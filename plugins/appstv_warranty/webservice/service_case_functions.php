@@ -300,6 +300,18 @@ function appstv_case_sorted( $value ){
 }
 
 /**
+ * @description Case number as shown: SC-12, or SC-12-03 for TV case 3 of main case 12
+ * @param {array} $row - service_cases row (id, case_kind, parent_case_id, tv_index)
+ * @returns {string}
+ */
+function appstv_case_label( $row ){
+    if( isset( $row[ 'case_kind' ] ) && $row[ 'case_kind' ] === 'tv' ){
+        return sprintf( 'SC-%d-%02d', $row[ 'parent_case_id' ], $row[ 'tv_index' ] );
+    }
+    return 'SC-' . (int) $row[ 'id' ];
+}
+
+/**
  * @description Name of a user for the timeline
  * @param {string} $user_id - users.user_id
  * @returns {string} "First Last", or '' when unknown
@@ -462,46 +474,66 @@ function appstv_case_list(){
         $q        = trim( (string) request( 'q' ) );
         $today    = appstv_case_today();
         $me       = appstv_case_user_id();
-        $where    = array( '1=1' );
+        $where    = array( "c.case_kind <> 'tv'" );        // TV cases are shown inside their main case
+        // Due: the planned visit date, else the visit window (1.0.21)
+        $overdue  = "( c.status IN ( 'open', 'scheduled' ) AND ( ( c.visit_date <> '' AND c.visit_date < '$today' ) OR ( c.visit_date = '' AND c.visit_to <> '' AND c.visit_to < '$today' ) ) )";
+        $due_today = "( c.status IN ( 'open', 'scheduled' ) AND ( c.visit_date = '$today' OR ( c.visit_date = '' AND c.visit_from <> '' AND c.visit_from <= '$today' AND c.visit_to >= '$today' ) ) )";
 
         if( $status === '' || $status === 'active' ){ $where[] = "c.status <> 'closed'"; }
-        else if( $status === 'overdue' ){ $where[] = "c.status IN ( 'open', 'scheduled' ) AND c.visit_date <> '' AND c.visit_date < '$today'"; }
-        else if( $status === 'today' ){ $where[] = "c.status IN ( 'open', 'scheduled' ) AND c.visit_date = '$today'"; }
+        else if( $status === 'overdue' ){ $where[] = $overdue; }
+        else if( $status === 'today' ){ $where[] = $due_today; }
         else if( in_array( $status, APPSTV_CASE_STATUSES ) ){ $where[] = "c.status = '$status'"; }
 
-        if( $assigned === 'me' ){ $where[] = "c.assigned_user_id = '" . escape_string( $me ) . "'"; }
-        else if( $assigned === 'none' ){ $where[] = "( c.assigned_user_id IS NULL OR c.assigned_user_id = '' )"; }
-        else if( $assigned !== '' ){ $where[] = "c.assigned_user_id = '" . escape_string( $assigned ) . "'"; }
+        // Staff: any of the case's staff (service_case_staff), or the single assigned_user_id of older cases
+        $staff_is = function( $user_id ){
+            $e = escape_string( $user_id );
+            return "( c.assigned_user_id = '$e' OR EXISTS ( SELECT 1 FROM service_case_staff s WHERE s.case_id = c.id AND s.user_id = '$e' ) )";
+        };
+        if( $assigned === 'me' ){ $where[] = $staff_is( $me ); }
+        else if( $assigned === 'none' ){ $where[] = "( ( c.assigned_user_id IS NULL OR c.assigned_user_id = '' ) AND NOT EXISTS ( SELECT 1 FROM service_case_staff s WHERE s.case_id = c.id ) )"; }
+        else if( $assigned !== '' ){ $where[] = $staff_is( $assigned ); }
 
         if( $q !== '' ){
             $e_q = escape_string( $q );
-            $case_no = (int) preg_replace( '/\D/', '', $q );
+            $case_no = preg_match( '/^\s*(?:SC-?)?(\d+)/i', $q, $m ) ? (int) $m[ 1 ] : 0;   // "SC-12-03" finds main case 12
             $where[] = "( cu.company_name LIKE '%$e_q%' OR CONCAT( cu.first_name, ' ', cu.last_name ) LIKE '%$e_q%' OR c.contact_name LIKE '%$e_q%'
                           OR c.contact_phone LIKE '%$e_q%' OR c.problem LIKE '%$e_q%'
-                          OR EXISTS ( SELECT 1 FROM service_case_tvs t WHERE t.case_id = c.id AND t.serial_number LIKE '%$e_q%' )"
+                          OR EXISTS ( SELECT 1 FROM service_case_tvs t JOIN service_cases k ON k.id = t.case_id
+                                      WHERE ( k.id = c.id OR k.parent_case_id = c.id ) AND t.serial_number LIKE '%$e_q%' )"
                      . ( $case_no > 0 ? " OR c.id = $case_no" : "" ) . " )";
         }
 
         // Due visits first (overdue, today, upcoming), then cases without a visit date, closed ones last
         $sql = "SELECT c.*, cu.company_name, cu.first_name, cu.last_name, u.fname AS a_fname, u.lname AS a_lname,
-                       ( SELECT GROUP_CONCAT( t.serial_number ORDER BY t.id SEPARATOR ', ' ) FROM service_case_tvs t WHERE t.case_id = c.id ) AS serials,
+                       ( SELECT GROUP_CONCAT( t.serial_number ORDER BY t.id SEPARATOR ', ' ) FROM service_case_tvs t JOIN service_cases k ON k.id = t.case_id
+                         WHERE k.id = c.id OR k.parent_case_id = c.id ) AS serials,
+                       ( SELECT GROUP_CONCAT( s.user_id ORDER BY s.added_on SEPARATOR ',' ) FROM service_case_staff s WHERE s.case_id = c.id ) AS staff_ids,
+                       ( SELECT COUNT(*) FROM service_cases k WHERE k.parent_case_id = c.id AND k.case_kind = 'tv' ) AS tv_case_count,
                        ( SELECT COUNT(*) FROM service_case_notes n WHERE n.case_id = c.id AND n.note_type = 'note' ) AS note_count
                 FROM service_cases c
                 LEFT JOIN customers cu ON cu.customer_id = c.customer_id
                 LEFT JOIN users u ON CONVERT( u.user_id USING utf8mb4 ) COLLATE utf8mb4_unicode_ci = c.assigned_user_id   -- users is utf16
                 WHERE " . implode( ' AND ', $where ) . "
                 ORDER BY ( c.status = 'closed' ),
-                         ( CASE WHEN c.status IN ( 'open', 'scheduled' ) AND c.visit_date <> '' THEN 0 ELSE 1 END ),
-                         c.visit_date, c.visit_time, c.id DESC
+                         ( CASE WHEN c.status IN ( 'open', 'scheduled' ) AND ( c.visit_date <> '' OR c.visit_to <> '' ) THEN 0 ELSE 1 END ),
+                         COALESCE( NULLIF( c.visit_date, '' ), c.visit_to ), c.visit_time, c.id DESC
                 LIMIT 300";
         $cases = array();
         foreach( appstv_case_rows( $sql ) as $row ){
             $due = '';
             if( in_array( $row[ 'status' ], array( 'open', 'scheduled' ) ) && $row[ 'visit_date' ] !== '' && $row[ 'visit_date' ] !== null ){
                 $due = ( $row[ 'visit_date' ] < $today ) ? 'overdue' : ( $row[ 'visit_date' ] === $today ? 'today' : 'upcoming' );
+            } else if( in_array( $row[ 'status' ], array( 'open', 'scheduled' ) ) && (string) $row[ 'visit_to' ] !== '' ){
+                $due = ( $row[ 'visit_to' ] < $today ) ? 'overdue' : ( $row[ 'visit_from' ] <= $today ? 'today' : 'upcoming' );
             }
+            $staff_names = array();
+            foreach( ( (string) $row[ 'staff_ids' ] === '' ) ? array() : explode( ',', $row[ 'staff_ids' ] ) as $staff_id ){ $staff_names[] = appstv_case_user_name( $staff_id ); }
+            if( count( $staff_names ) === 0 && trim( $row[ 'a_fname' ] . ' ' . $row[ 'a_lname' ] ) !== '' ){ $staff_names[] = trim( $row[ 'a_fname' ] . ' ' . $row[ 'a_lname' ] ); }
             $cases[] = array(
-                'id' => (int) $row[ 'id' ], 'status' => $row[ 'status' ], 'outcome' => $row[ 'outcome' ],
+                'id' => (int) $row[ 'id' ], 'label' => appstv_case_label( $row ), 'kind' => $row[ 'case_kind' ], 'tv_count' => (int) $row[ 'tv_count' ],
+                'tv_case_count' => (int) $row[ 'tv_case_count' ], 'warranty_status' => $row[ 'warranty_status' ],
+                'visit_from' => (string) $row[ 'visit_from' ], 'visit_to' => (string) $row[ 'visit_to' ], 'staff_names' => $staff_names,
+                'status' => $row[ 'status' ], 'outcome' => $row[ 'outcome' ],
                 'customer_name' => appstv_case_customer_name( $row ), 'contact_name' => $row[ 'contact_name' ], 'contact_phone' => $row[ 'contact_phone' ],
                 'problem' => $row[ 'problem' ], 'serials' => (string) $row[ 'serials' ],
                 'assigned_user_id' => (string) $row[ 'assigned_user_id' ], 'assigned_name' => trim( $row[ 'a_fname' ] . ' ' . $row[ 'a_lname' ] ),
@@ -510,13 +542,12 @@ function appstv_case_list(){
             );
         }
 
-        $e_me = escape_string( $me );
         $counts = mysqli_fetch_assoc( appstv_case_db( "SELECT
-                SUM( status IN ( 'open', 'scheduled' ) AND visit_date <> '' AND visit_date < '$today' ) AS overdue,
-                SUM( status IN ( 'open', 'scheduled' ) AND visit_date = '$today' ) AS today,
-                SUM( status <> 'closed' ) AS active,
-                SUM( status <> 'closed' AND assigned_user_id = '$e_me' ) AS mine
-            FROM service_cases" ) );
+                SUM( $overdue ) AS overdue,
+                SUM( $due_today ) AS today,
+                SUM( c.status <> 'closed' ) AS active,
+                SUM( c.status <> 'closed' AND " . $staff_is( $me ) . " ) AS mine
+            FROM service_cases c WHERE c.case_kind <> 'tv'" ) );
         foreach( $counts as $k => $v ){ $counts[ $k ] = (int) $v; }
 
         return array( count( $cases ) . " case(s).", array( 'cases' => $cases, 'counts' => $counts, 'today' => $today ) );
@@ -549,9 +580,37 @@ function appstv_case_get(){
             $notes[] = array( 'type' => $row[ 'note_type' ], 'note' => $row[ 'note' ], 'by' => trim( $row[ 'fname' ] . ' ' . $row[ 'lname' ] ), 'on' => $row[ 'created_on' ] );
         }
 
+        // Wizard fields (1.0.21): staff, channels, models, main / TV cases, history
+        $staff = array();
+        foreach( appstv_case_rows( "SELECT user_id FROM service_case_staff WHERE case_id = $id ORDER BY added_on, user_id" ) as $row ){
+            $staff[] = array( 'user_id' => $row[ 'user_id' ], 'name' => appstv_case_user_name( $row[ 'user_id' ] ) );
+        }
+        $channels = array_column( appstv_case_rows( "SELECT channel FROM service_case_channels WHERE case_id = $id" ), 'channel' );
+        $models = array();
+        foreach( appstv_case_rows( "SELECT m.product_id, p.name FROM service_case_models m LEFT JOIN products p ON p.product_id = m.product_id
+                                    WHERE m.case_id = $id ORDER BY p.name" ) as $row ){
+            $models[] = array( 'product_id' => $row[ 'product_id' ], 'name' => $row[ 'product_id' ] === 'unsure' ? 'Not sure' : (string) $row[ 'name' ] );
+        }
+        $main_id = ( $case[ 'case_kind' ] === 'tv' ) ? (int) $case[ 'parent_case_id' ] : $id;
+        $tv_cases = array();
+        foreach( appstv_case_rows( "SELECT c.id, c.tv_index, c.status, c.outcome, c.warranty_status,
+                                           ( SELECT GROUP_CONCAT( t.serial_number ORDER BY t.id SEPARATOR ', ' ) FROM service_case_tvs t WHERE t.case_id = c.id ) AS serials
+                                    FROM service_cases c WHERE c.parent_case_id = $main_id AND c.case_kind = 'tv' ORDER BY c.tv_index" ) as $row ){
+            $tv_cases[] = array( 'id' => (int) $row[ 'id' ], 'label' => sprintf( 'SC-%d-%02d', $main_id, $row[ 'tv_index' ] ), 'status' => $row[ 'status' ],
+                                 'outcome' => $row[ 'outcome' ], 'warranty_status' => $row[ 'warranty_status' ], 'serials' => (string) $row[ 'serials' ] );
+        }
+        $history_where = "h.case_id = $id" . ( $case[ 'draft_id' ] && $case[ 'case_kind' ] !== 'tv' ? " OR ( h.draft_id = " . (int) $case[ 'draft_id' ] . " AND h.case_id IS NULL )" : "" );
+
         $data = array(
             'case' => array(
-                'id' => $id, 'status' => $case[ 'status' ], 'outcome' => $case[ 'outcome' ],
+                'id' => $id, 'label' => appstv_case_label( $case ), 'kind' => $case[ 'case_kind' ],
+                'parent_case_id' => $case[ 'parent_case_id' ] === null ? null : (int) $case[ 'parent_case_id' ],
+                'tv_index' => (int) $case[ 'tv_index' ], 'tv_count' => (int) $case[ 'tv_count' ], 'warranty_status' => $case[ 'warranty_status' ],
+                'problem_types' => $case[ 'problem_types' ] === '' ? array() : explode( ',', $case[ 'problem_types' ] ),
+                'contact_email' => $case[ 'contact_email' ], 'contact_position' => $case[ 'contact_position' ], 'complained_on' => $case[ 'complained_on' ],
+                'visit_from' => $case[ 'visit_from' ], 'visit_to' => $case[ 'visit_to' ],
+                'staff' => $staff, 'channels' => $channels, 'models' => $models,
+                'status' => $case[ 'status' ], 'outcome' => $case[ 'outcome' ],
                 'customer_id' => $case[ 'customer_id' ], 'customer_name' => $customer ? appstv_case_customer_name( $customer ) : '(customer not found)',
                 'customer_email' => $customer ? $customer[ 'primary_email' ] : '', 'customer_mobile' => $customer ? $customer[ 'primary_mobile' ] : '',
                 'contact_name' => $case[ 'contact_name' ], 'contact_phone' => $case[ 'contact_phone' ], 'problem' => $case[ 'problem' ],
@@ -560,6 +619,8 @@ function appstv_case_get(){
                 'closed_by' => appstv_case_user_name( $case[ 'closed_by' ] ), 'closed_on' => $case[ 'closed_on' ]
             ),
             'tvs' => $tvs,
+            'tv_cases' => $tv_cases,
+            'history' => appstv_case_history_list( $history_where ),
             'notes' => $notes,
             'today' => appstv_case_today()
         );
@@ -611,53 +672,9 @@ function appstv_case_insert_tv( $case_id, $product_sn_id, $serial ){
 }
 
 
-/**
- * Creates a case: customer, contact, problem, TVs, assigned staff and visit date
+/*
+ * appstv_case_create (opening a case from the wizard) is in service_case_draft_functions.php (1.0.21)
  */
-function appstv_case_create(){
-    checkAuthorizationForFunction( __FUNCTION__ );
-    appstv_case_transaction( __FUNCTION__, function(){
-        $in = json_decode( (string) request( 'case' ), true );
-        if( !is_array( $in ) ){ throw new AppstvServiceRuleException( "The form data was not received." ); }
-
-        $customer_id = trim( (string) ( isset( $in[ 'customer_id' ] ) ? $in[ 'customer_id' ] : '' ) );
-        $customer = mysqli_fetch_assoc( appstv_case_db( "SELECT customer_id FROM customers WHERE customer_id = '" . escape_string( $customer_id ) . "' LIMIT 1" ) );
-        if( $customer_id === '' || $customer === null ){ throw new AppstvServiceRuleException( "Choose the customer." ); }
-
-        $contact_name  = trim( (string) ( isset( $in[ 'contact_name' ] ) ? $in[ 'contact_name' ] : '' ) );
-        $contact_phone = trim( (string) ( isset( $in[ 'contact_phone' ] ) ? $in[ 'contact_phone' ] : '' ) );
-        $problem       = trim( (string) ( isset( $in[ 'problem' ] ) ? $in[ 'problem' ] : '' ) );
-        $assigned      = trim( (string) ( isset( $in[ 'assigned_user_id' ] ) ? $in[ 'assigned_user_id' ] : '' ) );
-        if( $problem === '' ){ throw new AppstvServiceRuleException( "Describe the problem." ); }
-        if( strlen( $problem ) > 5000 || strlen( $contact_name ) > 200 || strlen( $contact_phone ) > 50 ){ throw new AppstvServiceRuleException( "A field is too long." ); }
-        if( !appstv_case_is_staff( $assigned ) ){ throw new AppstvServiceRuleException( "The chosen staff member cannot be assigned." ); }
-        list( $visit_date, $visit_time ) = appstv_case_visit_fields( isset( $in[ 'visit_date' ] ) ? $in[ 'visit_date' ] : '', isset( $in[ 'visit_time' ] ) ? $in[ 'visit_time' ] : '' );
-
-        $status = ( $visit_date !== '' ) ? 'scheduled' : 'open';
-        $now = create_iso_8601_datetime();
-        $user = appstv_case_user_id();
-        appstv_case_db( "INSERT INTO service_cases ( customer_id, contact_name, contact_phone, problem, status, assigned_user_id, visit_date, visit_time,
-                                                    outcome, created_by, created_on, updated_on, closed_by, closed_on )
-                         VALUES ( '" . escape_string( $customer_id ) . "', '" . escape_string( $contact_name ) . "', '" . escape_string( $contact_phone ) . "',
-                                  '" . escape_string( $problem ) . "', '$status', '" . escape_string( $assigned ) . "', '$visit_date', '$visit_time',
-                                  '', '" . escape_string( $user ) . "', '$now', '$now', '', '' )" );
-        global $con;
-        $case_id = (int) mysqli_insert_id( $con );
-
-        $added = array();
-        foreach( ( isset( $in[ 'tvs' ] ) && is_array( $in[ 'tvs' ] ) ) ? $in[ 'tvs' ] : array() as $tv ){
-            $added[] = appstv_case_insert_tv( $case_id, trim( (string) ( isset( $tv[ 'product_sn_id' ] ) ? $tv[ 'product_sn_id' ] : '' ) ),
-                                                        isset( $tv[ 'serial_number' ] ) ? $tv[ 'serial_number' ] : '' );
-        }
-
-        $text = 'Case opened' . ( count( $added ) ? ' for TV ' . implode( ', ', $added ) : '' );
-        if( $assigned !== '' ){ $text .= '; assigned to ' . appstv_case_user_name( $assigned ); }
-        if( $visit_date !== '' ){ $text .= '; visit ' . $visit_date . ( $visit_time !== '' ? ' ' . $visit_time : '' ); }
-        appstv_case_log( $case_id, 'created', $text );
-
-        return array( "Case SC-$case_id opened.", array( 'case_id' => $case_id ) );
-    } );
-}
 
 
 /**

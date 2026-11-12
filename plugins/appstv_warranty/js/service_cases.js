@@ -1,10 +1,11 @@
 "use strict";
 
 /* =============================================
-   service_cases.js (v1.0.7)
+   service_cases.js (v1.0.21)
    Plugin: appstv_warranty - Service Cases page
-   List (chips + filters, due visits first), New case (TV first: finds the customer), Case details (staff, visit,
-   status, TVs with Record service / Extended warranty, notes timeline). Deep links: ?case=<id>, ?new_case_tv=<product_sn_id>.
+   List (chips + filters, due visits first), Case details (complaint, staff, visit window, TV cases, TVs with
+   Record service / Extended warranty, notes timeline, change history). New cases are opened with the wizard
+   (service_case_wizard.js, SCW). Deep links: ?case=<id>, ?draft=<id>, ?new_case_tv=<product_sn_id>.
    ============================================= */
 
 var SC = {
@@ -14,9 +15,6 @@ var SC = {
     staff : [],                                                // [ { user_id, name } ] that cases can be assigned to
     me : '',                                                   // user_id of the signed-in user
     current : null,                                            // Data of the open case (appstv_case_get)
-    newCase : null,                                            // New case form: { customer, tvs: [ { product_sn_id, serial_number, label } ] }
-    found : [],                                                // TVs of the last serial number search in the New case form
-    searchTimer : null,                                        // Pending customer search
     listTimer : null,                                          // Pending list reload (search typing)
     listSeq : 0,                                               // Number of the latest list request (older answers dropped)
     STATUS : { open: 'Open', scheduled: 'Visit scheduled', visited: 'Visited', closed: 'Closed' },
@@ -144,31 +142,8 @@ var SC = {
         } );
         $( '#sc_list' ).on( 'click', '[data-case-id]', function () { SC.openCase( +$( this ).attr( 'data-case-id' ) ); } );
 
-        // New case
-        $( '#sc_new_case' ).on( 'click', function () { SC.openNew( null ); } );
-        $( '#sc_new_find' ).on( 'click', function () { SC.findTv( $( '#sc_new_serial' ).val() ); } );
-        $( '#sc_new_serial' ).on( 'keydown', function ( e ) { if ( e.key === 'Enter' ) { e.preventDefault(); SC.findTv( $( this ).val() ); } } );
-        $( '#sc_new_scan' ).on( 'click', function () {
-            AppstvScanner.open( { title: 'Scan the TV', continuous: false, onScan: function ( serial ) { $( '#sc_new_serial' ).val( serial ); SC.findTv( serial ); } } );
-        } );
-        $( '#sc_new_found' ).on( 'click', '[data-use-tv]', function () { SC.useFoundTv( +$( this ).attr( 'data-use-tv' ) ); } );
-        $( '#sc_new_found' ).on( 'click', '[data-add-unknown]', function () { SC.addNewTv( { product_sn_id: '', serial_number: $( this ).attr( 'data-add-unknown' ), label: 'not in the system' } ); $( '#sc_new_found' ).empty(); } );
-        $( '#sc_new_tvs' ).on( 'click', '[data-remove-new-tv]', function () { SC.newCase.tvs.splice( +$( this ).attr( 'data-remove-new-tv' ), 1 ); SC.renderNewTvs(); } );
-        $( '#sc_new_customer_search' ).on( 'input', function () {
-            clearTimeout( SC.searchTimer );
-            var q = $( this ).val().trim();
-            SC.searchTimer = setTimeout( function () { SC.searchCustomers( q ); }, 300 );
-        } );
-        $( '#sc_new_customer_results' ).on( 'click', '[data-customer-index]', function () {
-            var c = $( '#sc_new_customer_results' ).data( 'customers' )[ +$( this ).attr( 'data-customer-index' ) ];
-            SC.setNewCustomer( { customer_id: c.customer_id, name: c.name, sub: [ c.person, c.primary_mobile, c.primary_email ].filter( Boolean ).join( ' · ' ), person: c.person, mobile: c.primary_mobile } );
-        } );
-        $( '#sc_new_customer_change' ).on( 'click', function () { SC.setNewCustomer( null ); $( '#sc_new_customer_search' ).val( '' ).trigger( 'focus' ); } );
-        $( document ).on( 'click', function ( e ) {
-            if ( $( e.target ).closest( '#sc_new_customer_box' ).length === 0 ) { $( '#sc_new_customer_results' ).addClass( 'd-none' ); }
-        } );
-        $( '#sc_new_visit_date' ).on( 'change', function () { if ( !$( this ).val() ) { $( '#sc_new_visit_time' ).val( '' ); } } );
-        $( '#sc_new_save' ).on( 'click', SC.saveNew );
+        // New case: the wizard
+        $( '#sc_new_case' ).on( 'click', function () { SCW.openNew(); } );
 
         // Case details (rebuilt on every load, so delegated)
         var $body = $( '#sc_case_body' );
@@ -201,10 +176,23 @@ var SC = {
     openFromUrl : function () {
         var params = new URL( window.location.href ).searchParams;
         if ( params.get( 'case' ) ) { SC.openCase( +params.get( 'case' ) ); return; }
+        if ( params.get( 'draft' ) ) { SCW.openDraft( +params.get( 'draft' ), SCW.readBackup() ); return; }
         if ( params.get( 'new_case_tv' ) ) {
-            SC.openNew( null );
+            // From the Warranty page: a new case for that TV (customer from its sale, serial kept for the case)
             SC.post( { what_do_you_want: 'appstv_case_find_tv', product_sn_id: params.get( 'new_case_tv' ) } ).then( function ( info ) {
-                if ( info.data.tvs.length ) { SC.found = info.data.tvs; SC.useFoundTv( 0 ); }
+                var tv = info.data.tvs[ 0 ];
+                SCW.openNew( function () {
+                    if ( !tv ) { return; }
+                    if ( tv.customer_id ) {
+                        SCW.setCustomer( { customer_id: tv.customer_id, name: tv.customer_name, sub: 'From the sale of TV ' + tv.serial_number + ( tv.invoice_no ? ' (invoice ' + tv.invoice_no + ')' : '' ) } );
+                    }
+                    SCW.answers.serials = [ { product_sn_id: tv.product_sn_id, serial_number: tv.serial_number, label: tv.product_name + ' · ' + tv.warranty_status } ];
+                    if ( tv.warranty_status === 'Active' || tv.warranty_status === 'Active (Extended)' ) { SCW.answers.warranty = 'under'; }
+                    if ( tv.warranty_status === 'Expired' ) { SCW.answers.warranty = 'out'; }
+                    if ( tv.product_id ) { SCW.answers.models = [ tv.product_id ]; }
+                    SCW.renderTvs();
+                    SCW.markDirty();
+                } );
             } ).catch( SC.toastError );
         }
     },
@@ -236,6 +224,13 @@ var SC = {
      */
     cardHtml : function ( c ) {
         var due = '';
+        if ( !c.visit_date && c.visit_to ) {
+            // Visit window (wizard cases)
+            var wl = { overdue: 'Visit deadline missed', today: 'Visit window', upcoming: 'Visit' }[ c.due ] || 'Visit';
+            var wc = { overdue: 'badge-danger', today: 'badge-warning', upcoming: 'badge-light-info' }[ c.due ] || 'badge-light';
+            due = '<span class="badge ' + wc + '"><i class="fa-regular fa-calendar me-1' + ( c.due === 'overdue' || c.due === 'today' ? ' text-white' : '' ) + '"></i>'
+                + wl + ' · ' + SC.esc( SC.showDate( c.visit_from ) ) + ( c.visit_to !== c.visit_from ? ' – ' + SC.esc( SC.showDate( c.visit_to ) ) : '' ) + '</span>';
+        }
         if ( c.visit_date ) {
             var label = { overdue: 'Overdue', today: 'Today', upcoming: '' }[ c.due ] || '';
             var cls = { overdue: 'badge-danger', today: 'badge-warning', upcoming: 'badge-light-info' }[ c.due ] || 'badge-light';
@@ -245,7 +240,8 @@ var SC = {
         return '<div class="col-12 col-md-6 col-xxl-4">'
             + '<div class="sc-card sc-due-' + ( c.due || 'none' ) + '" data-case-id="' + c.id + '" role="button" tabindex="0">'
             + '  <div class="d-flex flex-wrap gap-2 align-items-center mb-2">'
-            + '    <span class="fw-bold text-gray-800">SC-' + c.id + '</span>'
+            + '    <span class="fw-bold text-gray-800">' + SC.esc( c.label || 'SC-' + c.id ) + '</span>'
+            + ( c.tv_case_count ? '<span class="badge badge-light">' + c.tv_case_count + ' TV cases</span>' : ( c.tv_count > 1 ? '<span class="badge badge-light">' + c.tv_count + ' TVs</span>' : '' ) )
             + '    <span class="badge ' + SC.STATUS_BADGE[ c.status ] + '">' + SC.STATUS[ c.status ] + ( c.status === 'closed' && c.outcome ? ' · ' + SC.OUTCOME[ c.outcome ] : '' ) + '</span>'
             + '    ' + due
             + '  </div>'
@@ -254,173 +250,10 @@ var SC = {
             + '  <div class="sc-card-problem">' + SC.esc( c.problem ) + '</div>'
             + '  <div class="d-flex flex-wrap gap-3 text-muted fs-7 mt-2">'
             + ( c.serials ? '<span class="font-monospace"><i class="fa-solid fa-tv me-1"></i>' + SC.esc( c.serials ) + '</span>' : '' )
-            + '    <span><i class="fa-solid fa-user me-1"></i>' + SC.esc( c.assigned_name || 'Not assigned' ) + '</span>'
+            + '    <span><i class="fa-solid fa-user me-1"></i>' + SC.esc( ( c.staff_names && c.staff_names.length ? c.staff_names.join( ', ' ) : c.assigned_name ) || 'Not assigned' ) + '</span>'
             + ( c.note_count ? '<span><i class="fa-regular fa-comment me-1"></i>' + c.note_count + '</span>' : '' )
             + '  </div>'
             + '</div></div>';
-    },
-
-    // ── New case ────────────────────────────────────────────────
-
-    /**
-     * @description Opens an empty New case form
-     * @returns {void}
-     */
-    openNew : function () {
-        SC.newCase = { customer: null, tvs: [] };
-        SC.found = [];
-        $( '#sc_new_serial, #sc_new_customer_search, #sc_new_contact_name, #sc_new_contact_phone, #sc_new_problem, #sc_new_visit_date, #sc_new_visit_time' ).val( '' );
-        $( '#sc_new_assigned' ).val( '' );
-        $( '#sc_new_found' ).empty();
-        SC.renderNewTvs();
-        SC.setNewCustomer( null );
-        bootstrap.Modal.getOrCreateInstance( document.getElementById( 'sc_new_modal' ) ).show();
-    },
-
-    /**
-     * @description Looks a serial number up and lists the TVs found (customer, model, warranty)
-     * @param {string} raw - Serial number as typed / scanned
-     * @returns {void}
-     */
-    findTv : function ( raw ) {
-        var serial = AppstvScanner.cleanSerial( raw );
-        var $found = $( '#sc_new_found' );
-        if ( !serial ) { $found.html( '<div class="text-danger fs-7">Enter a serial number (letters and digits).</div>' ); return; }
-        $found.html( '<div class="text-muted fs-7">Searching…</div>' );
-        SC.post( { what_do_you_want: 'appstv_case_find_tv', serial_number: serial } ).then( function ( info ) {
-            SC.found = info.data.tvs;
-            if ( SC.found.length === 1 ) { SC.useFoundTv( 0 ); $( '#sc_new_serial' ).val( '' ); return; }
-            if ( SC.found.length === 0 ) {
-                $found.html( '<div class="alert alert-light-warning py-3 mb-0 fs-7">No TV with serial number <b>' + SC.esc( serial ) + '</b> in the system. '
-                    + '<button type="button" class="btn btn-sm btn-light-warning ms-2" data-add-unknown="' + SC.esc( serial ) + '">Add it anyway</button></div>' );
-                return;
-            }
-            var html = '<div class="fs-7 text-muted mb-2">' + SC.found.length + ' TVs carry this serial number. Choose the right one:</div>';
-            $.each( SC.found, function ( i, tv ) {
-                html += '<div class="sc-found-tv"><div><div class="fw-semibold">' + SC.esc( tv.customer_name || 'No customer' ) + '</div>'
-                     + '<div class="text-muted fs-7">' + SC.esc( tv.product_name ) + ' · <span class="badge ' + SC.warrantyBadge( tv.warranty_status ) + '">' + SC.esc( tv.warranty_status ) + '</span>'
-                     + ( tv.invoice_no ? ' · invoice ' + SC.esc( tv.invoice_no ) : '' ) + '</div></div>'
-                     + '<button type="button" class="btn btn-sm btn-primary" data-use-tv="' + i + '">Use</button></div>';
-            } );
-            $found.html( html );
-        } ).catch( function ( message ) { $found.html( '<div class="text-danger fs-7">' + SC.esc( message ) + '</div>' ); } );
-    },
-
-    /**
-     * @description Adds a found TV to the new case; sets the customer from its sale when none is chosen yet
-     * @param {number} index - Position in SC.found
-     * @returns {void}
-     */
-    useFoundTv : function ( index ) {
-        var tv = SC.found[ index ];
-        SC.addNewTv( { product_sn_id: tv.product_sn_id, serial_number: tv.serial_number,
-                       label: tv.product_name + ' · ' + tv.warranty_status + ( tv.warranty_expiry ? ' (until ' + SC.showDate( tv.extended_expiry || tv.warranty_expiry ) + ')' : '' ),
-                       customer_id: tv.customer_id, customer_name: tv.customer_name } );
-        if ( SC.newCase.customer === null && tv.customer_id ) {
-            SC.setNewCustomer( { customer_id: tv.customer_id, name: tv.customer_name, sub: 'From the sale of TV ' + tv.serial_number + ( tv.invoice_no ? ' (invoice ' + tv.invoice_no + ')' : '' ) } );
-        }
-        $( '#sc_new_found' ).empty();
-    },
-
-    /**
-     * @description Adds a TV to the new case form (no duplicates)
-     * @param {object} tv - { product_sn_id, serial_number, label, customer_id, customer_name }
-     * @returns {void}
-     */
-    addNewTv : function ( tv ) {
-        var exists = SC.newCase.tvs.some( function ( t ) { return tv.product_sn_id ? t.product_sn_id === tv.product_sn_id : ( !t.product_sn_id && t.serial_number === tv.serial_number ); } );
-        if ( !exists ) { SC.newCase.tvs.push( tv ); }
-        SC.renderNewTvs();
-    },
-
-    /**
-     * @description Draws the TVs of the new case, warning when a TV was sold to another customer
-     * @returns {void}
-     */
-    renderNewTvs : function () {
-        var mine = SC.newCase && SC.newCase.customer ? SC.newCase.customer.customer_id : null;
-        var html = '';
-        $.each( SC.newCase ? SC.newCase.tvs : [], function ( i, tv ) {
-            var other = ( mine && tv.customer_id && tv.customer_id !== mine );
-            html += '<div class="sc-new-tv' + ( other ? ' is-warning' : '' ) + '"><div><span class="font-monospace fw-bold">' + SC.esc( tv.serial_number ) + '</span>'
-                 + ' <span class="text-muted fs-7">' + SC.esc( tv.label || '' ) + '</span>'
-                 + ( other ? '<div class="fs-7 text-warning">Sold to ' + SC.esc( tv.customer_name ) + ', not to this customer</div>' : '' ) + '</div>'
-                 + '<button type="button" class="btn btn-icon btn-sm btn-active-light-danger" data-remove-new-tv="' + i + '"><i class="fa-solid fa-xmark"></i></button></div>';
-        } );
-        $( '#sc_new_tvs' ).html( html );
-    },
-
-    /**
-     * @description Searches customers for the new case
-     * @param {string} q - Search text
-     * @returns {void}
-     */
-    searchCustomers : function ( q ) {
-        var $results = $( '#sc_new_customer_results' );
-        if ( q.length < 2 ) { $results.addClass( 'd-none' ); return; }
-        SC.post( { what_do_you_want: 'appstv_sale_search_customers', q: q } ).then( function ( info ) {
-            var list = info.data || [];
-            var html = list.length ? '' : '<div class="sc-dropdown-empty">No customer found.</div>';
-            $.each( list, function ( i, c ) {
-                html += '<div class="sc-dropdown-item" data-customer-index="' + i + '"><div class="fw-semibold">' + SC.esc( c.name || '(no name)' ) + '</div>'
-                     + '<div class="text-muted fs-8">' + SC.esc( [ c.person, c.primary_email, c.primary_mobile, 'ID ' + c.customer_id ].filter( Boolean ).join( ' · ' ) ) + '</div></div>';
-            } );
-            $results.data( 'customers', list ).html( html ).removeClass( 'd-none' );
-        } ).catch( SC.toastError );
-    },
-
-    /**
-     * @description Sets (or clears) the customer of the new case; fills empty contact fields from the customer
-     * @param {object|null} c - { customer_id, name, sub, person, mobile }
-     * @returns {void}
-     */
-    setNewCustomer : function ( c ) {
-        SC.newCase.customer = c;
-        $( '#sc_new_customer_results' ).addClass( 'd-none' );
-        $( '#sc_new_customer_box' ).toggleClass( 'd-none', c !== null );
-        $( '#sc_new_customer_selected' ).toggleClass( 'd-none', c === null );
-        if ( c !== null ) {
-            $( '#sc_new_customer_name' ).text( c.name || '(no name)' );
-            $( '#sc_new_customer_sub' ).text( c.sub || '' );
-            if ( c.person && !$( '#sc_new_contact_name' ).val() ) { $( '#sc_new_contact_name' ).val( c.person ); }
-            if ( c.mobile && !$( '#sc_new_contact_phone' ).val() ) { $( '#sc_new_contact_phone' ).val( c.mobile ); }
-        }
-        SC.renderNewTvs();
-    },
-
-    /**
-     * @description Opens the case after checking the form
-     * @returns {void}
-     */
-    saveNew : function () {
-        var n = SC.newCase;
-        var errors = [];
-        if ( n.customer === null ) { errors.push( 'Choose the customer (or find the TV first).' ); }
-        if ( !$( '#sc_new_problem' ).val().trim() ) { errors.push( 'Describe the problem.' ); }
-        if ( errors.length ) { Swal.fire( { icon: 'warning', title: 'Please check', html: errors.map( SC.esc ).join( '<br/>' ), buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary' } } ); return; }
-
-        var data = {
-            customer_id : n.customer.customer_id,
-            contact_name : $( '#sc_new_contact_name' ).val().trim(),
-            contact_phone : $( '#sc_new_contact_phone' ).val().trim(),
-            problem : $( '#sc_new_problem' ).val().trim(),
-            assigned_user_id : $( '#sc_new_assigned' ).val(),
-            visit_date : $( '#sc_new_visit_date' ).val(),
-            visit_time : $( '#sc_new_visit_time' ).val(),
-            tvs : n.tvs.map( function ( t ) { return { product_sn_id: t.product_sn_id, serial_number: t.serial_number }; } )
-        };
-        var $btn = $( '#sc_new_save' );
-        showLoadingOnButton( $btn );
-        SC.post( { what_do_you_want: 'appstv_case_create', 'case': JSON.stringify( data ) } ).then( function ( info ) {
-            hideLoadingOnButton( $btn );
-            bootstrap.Modal.getOrCreateInstance( document.getElementById( 'sc_new_modal' ) ).hide();
-            showSimpleToast( 'success', info.message );
-            SC.loadList();
-            SC.openCase( info.data.case_id );
-        } ).catch( function ( message ) {
-            hideLoadingOnButton( $btn );
-            Swal.fire( { icon: 'error', title: 'Not saved', text: message, buttonsStyling: false, customClass: { confirmButton: 'btn btn-danger' } } );
-        } );
     },
 
     // ── Case details ────────────────────────────────────────────
@@ -458,7 +291,7 @@ var SC = {
     renderCase : function () {
         var d = SC.current, c = d.case;
         var closed = ( c.status === 'closed' );
-        $( '#sc_case_title' ).html( 'SC-' + c.id + ' <span class="badge ' + SC.STATUS_BADGE[ c.status ] + ' fs-7 align-middle">' + SC.STATUS[ c.status ]
+        $( '#sc_case_title' ).html( SC.esc( c.label || 'SC-' + c.id ) + ' <span class="badge ' + SC.STATUS_BADGE[ c.status ] + ' fs-7 align-middle">' + SC.STATUS[ c.status ]
             + ( closed && c.outcome ? ' · ' + SC.OUTCOME[ c.outcome ] : '' ) + '</span>' );
 
         var tel = function ( phone ) { return phone ? '<a href="tel:' + SC.esc( phone.replace( /[^0-9+]/g, '' ) ) + '">' + SC.esc( phone ) + '</a>' : ''; };
@@ -486,18 +319,30 @@ var SC = {
              + '  <div class="col-4 col-md-3"><button type="button" class="btn btn-sm btn-primary w-100" data-sc-action="save-contact">Save</button></div></div>'
              + '</div>';
 
+        html += SC.complaintHtml( d );
+
         html += '<div class="sc-section"><div class="sc-section-title">Problem' + ( closed ? '' : ' <button type="button" class="btn btn-link btn-sm p-0 ms-2" data-sc-action="edit-problem">Edit</button>' ) + '</div>'
              + '<div id="scd_problem_view" class="sc-pre">' + SC.esc( c.problem ) + '</div>'
              + '<div id="scd_problem_edit" class="d-none"><textarea id="scd_problem" class="form-control form-control-solid mb-2" rows="3" maxlength="5000">' + SC.esc( c.problem ) + '</textarea>'
              + '<button type="button" class="btn btn-sm btn-primary" data-sc-action="save-problem">Save</button></div></div>';
 
-        html += '<div class="sc-section"><div class="sc-section-title">Visit</div><div class="row g-3 align-items-end">'
-             + '<div class="col-12 col-md-5"><label class="form-label fs-7">Assigned to</label><select id="scd_assigned" class="form-select form-select-sm form-select-solid"' + ( closed ? ' disabled' : '' ) + '>' + SC.staffOptions( c.assigned_user_id ) + '</select></div>'
+        var wizardCase = ( c.staff && c.staff.length > 0 );    // Opened with the wizard: several staff, visit window
+        html += '<div class="sc-section"><div class="sc-section-title">Visit</div>';
+        if ( wizardCase ) {
+            html += '<div class="sc-kv mb-3"><div class="sc-kv-k">Staff</div><div class="sc-kv-v">' + $.map( c.staff, function ( s ) { return SC.esc( s.name || s.user_id ); } ).join( ', ' ) + '</div>'
+                 + '<div class="sc-kv-k">Visit window</div><div class="sc-kv-v">' + SC.esc( SC.showDate( c.visit_from ) ) + ( c.visit_to !== c.visit_from ? ' – ' + SC.esc( SC.showDate( c.visit_to ) ) : '' )
+                 + ( !closed && c.visit_to && c.visit_to < d.today ? ' <span class="badge badge-danger ms-1">Deadline missed</span>' : '' ) + '</div></div>';
+        }
+        html += '<div class="row g-3 align-items-end">'
+             + ( wizardCase ? '<input type="hidden" id="scd_assigned" value="' + SC.esc( c.assigned_user_id ) + '"/>'
+                            : '<div class="col-12 col-md-5"><label class="form-label fs-7">Assigned to</label><select id="scd_assigned" class="form-select form-select-sm form-select-solid"' + ( closed ? ' disabled' : '' ) + '>' + SC.staffOptions( c.assigned_user_id ) + '</select></div>' )
              + '<div class="col-7 col-md-4"><label class="form-label fs-7">Date</label><input type="date" id="scd_visit_date" class="form-control form-control-sm form-control-solid" value="' + SC.esc( c.visit_date ) + '"' + ( closed ? ' disabled' : '' ) + '/></div>'
              + '<div class="col-5 col-md-3"><label class="form-label fs-7">Time</label><input type="time" id="scd_visit_time" class="form-control form-control-sm form-control-solid" value="' + SC.esc( c.visit_time ) + '"' + ( closed ? ' disabled' : '' ) + '/></div>'
              + '<div class="col-12"><button type="button" class="btn btn-sm btn-primary d-none" id="scd_save_visit" data-sc-action="save-visit">Save visit</button></div>'
              + '</div></div>';
 
+        html += SC.tvCasesHtml( d );
+        if ( c.kind !== 'main' || d.tvs.length ) {                // A main case's TVs are on its TV cases
         html += '<div class="sc-section"><div class="sc-section-title">TVs</div>';
         if ( d.tvs.length === 0 ) { html += '<div class="text-muted fs-7 mb-3">No TV on this case yet.</div>'; }
         $.each( d.tvs, function ( i, tv ) { html += SC.tvHtml( tv, c, closed ); } );
@@ -507,6 +352,7 @@ var SC = {
                  + '<button type="button" class="btn btn-primary" data-sc-action="scan-tv"><i class="fa-solid fa-camera"></i></button></div>';
         }
         html += '</div>';
+        }
         html += '</div>';
 
         // Right: timeline
@@ -520,12 +366,60 @@ var SC = {
                  + '<div class="sc-tl-body"><div class="sc-pre">' + SC.esc( n.note ) + '</div><div class="text-muted fs-8">' + SC.esc( n.by || 'Someone' ) + ' · ' + SC.esc( SC.showStamp( n.on ) ) + '</div></div></div>';
         } );
         html += '</div></div>'
+             + '<div class="sc-section"><div class="sc-section-title">Change history</div><div class="sc-history">' + SCH.listHtml( d.history ) + '</div></div>'
              + '<div class="text-muted fs-8">Opened by ' + SC.esc( c.created_by || '—' ) + ' on ' + SC.esc( SC.showStamp( c.created_on ) )
              + ( closed ? '<br/>Closed by ' + SC.esc( c.closed_by || '—' ) + ' on ' + SC.esc( SC.showStamp( c.closed_on ) ) : '' ) + '</div>'
              + '</div>';
 
         html += '</div>';
         $( '#sc_case_body' ).html( html );
+    },
+
+    /**
+     * @description HTML of the complaint details of a wizard case (complainant, when / how, TVs, models, warranty, problems)
+     * @param {object} d - Data of appstv_case_get
+     * @returns {string} '' for older cases
+     */
+    complaintHtml : function ( d ) {
+        var c = d.case;
+        if ( !c.complained_on ) { return ''; }
+        var tags = function ( values, labels ) {
+            return '<div class="sc-tags">' + $.map( values, function ( v ) { return '<span class="badge badge-light-primary">' + SC.esc( labels[ v ] || v ) + '</span>'; } ).join( '' ) + '</div>';
+        };
+        var rows = [
+            [ 'Complained by', SC.esc( [ c.contact_name, c.contact_position ].filter( Boolean ).join( ', ' ) )
+                + ( c.contact_email ? ' · <a href="mailto:' + SC.esc( c.contact_email ) + '">' + SC.esc( c.contact_email ) + '</a>' : '' ) ],
+            [ 'When / how', SC.esc( SC.showDate( c.complained_on.substr( 0, 10 ) ) + ' ' + c.complained_on.substr( 11, 5 ) + ' SGT' ) + ( c.channels.length ? tags( c.channels, SCW.CHANNELS ) : '' ) ],
+            [ 'TVs', c.kind === 'tv' ? 'This TV (TV case ' + c.tv_index + ')' : c.tv_count + ( c.kind === 'main' ? ' · one case per TV' : ( c.tv_count > 1 ? ' · one case for all' : '' ) ) ],
+            [ 'Models', SC.esc( $.map( c.models, function ( m ) { return m.name; } ).join( ', ' ) ) ],
+            [ 'Warranty', SC.esc( SCW.WARRANTY[ c.warranty_status ] || c.warranty_status ) ],
+            [ 'Problem', c.problem_types.length ? tags( c.problem_types, SCW.PROBLEMS ) : '' ]
+        ];
+        return '<div class="sc-section"><div class="sc-section-title">Complaint</div><div class="sc-kv">'
+             + $.map( rows, function ( r ) { return r[ 1 ] ? '<div class="sc-kv-k">' + r[ 0 ] + '</div><div class="sc-kv-v">' + r[ 1 ] + '</div>' : ''; } ).join( '' )
+             + '</div></div>';
+    },
+
+    /**
+     * @description HTML of the TV cases of a main case (or of the main case and the other TV cases, for a TV case)
+     * @param {object} d - Data of appstv_case_get
+     * @returns {string} '' when the case has no TV cases
+     */
+    tvCasesHtml : function ( d ) {
+        var c = d.case;
+        if ( !d.tv_cases || !d.tv_cases.length ) { return ''; }
+        var html = '<div class="sc-section"><div class="sc-section-title">' + ( c.kind === 'tv' ? 'Main case and TV cases' : 'TV cases' ) + '</div>';
+        if ( c.kind === 'tv' ) {
+            html += '<button type="button" class="sc-tv-case" data-sc-action="open-case" data-open-id="' + c.parent_case_id + '"><span class="fw-bold">SC-' + c.parent_case_id + '</span><span class="text-muted fs-7">Main case</span></button>';
+        }
+        $.each( d.tv_cases, function ( i, t ) {
+            var current = ( t.id === c.id );
+            html += '<button type="button" class="sc-tv-case' + ( current ? ' is-current' : '' ) + '" data-sc-action="open-case" data-open-id="' + t.id + '"' + ( current ? ' disabled' : '' ) + '>'
+                 + '<span><span class="fw-bold">' + SC.esc( t.label ) + '</span> <span class="font-monospace text-muted fs-7 ms-2">' + SC.esc( t.serials || 'Serial pending' ) + '</span></span>'
+                 + '<span class="d-flex gap-1"><span class="badge badge-light">' + SC.esc( SCW.WARRANTY[ t.warranty_status ] || t.warranty_status ) + '</span>'
+                 + '<span class="badge ' + SC.STATUS_BADGE[ t.status ] + '">' + SC.STATUS[ t.status ] + '</span></span></button>';
+        } );
+        return html + '</div>';
     },
 
     /**
@@ -600,6 +494,7 @@ var SC = {
         var update = function ( changes ) { return SC.caseCall( { what_do_you_want: 'appstv_case_update', changes: JSON.stringify( changes ) } ); };
         var tv = SC.current.tvs[ +$el.attr( 'data-tv-index' ) ];
 
+        if ( action === 'open-case' ) { SC.openCase( +$el.attr( 'data-open-id' ) ); return; }
         if ( action === 'edit-contact' ) { $( '#scd_contact_view' ).addClass( 'd-none' ); $( '#scd_contact_edit' ).removeClass( 'd-none' ); }
         if ( action === 'save-contact' ) { update( { contact_name: $( '#scd_contact_name' ).val(), contact_phone: $( '#scd_contact_phone' ).val() } ).catch( function () {} ); }
         if ( action === 'edit-problem' ) { $( '#scd_problem_view' ).addClass( 'd-none' ); $( '#scd_problem_edit' ).removeClass( 'd-none' ); }

@@ -210,7 +210,7 @@ FROM (
     UNION SELECT 'appstv_case_draft_get', 'Service Cases - read draft', 'Reads one draft with its history', 'READ'
     UNION SELECT 'appstv_case_draft_save', 'Service Cases - save draft', 'Starts or saves a draft of a case', 'UPDATE'
     UNION SELECT 'appstv_case_draft_delete', 'Service Cases - delete draft', 'Deletes a draft', 'DELETE'
-    UNION SELECT 'appstv_case_history', 'Service Cases - history', 'Reads who changed what and when on a case', 'READ'
+    UNION SELECT 'appstv_case_history_get', 'Service Cases - history', 'Reads who changed what and when on a case', 'READ'
     UNION SELECT 'appstv_case_media_upload', 'Service Cases - upload photo / video', 'Uploads photos and videos to a case or draft, in pieces', 'CREATE'
     UNION SELECT 'appstv_case_media_delete', 'Service Cases - remove photo / video', 'Removes a photo or video of a case or draft', 'DELETE'
     UNION SELECT 'appstv_case_tv_case_add', 'Service Cases - add TV case', 'Adds TV cases to a main case', 'UPDATE'
@@ -227,7 +227,7 @@ FROM ( SELECT rf.role_id
        JOIN functionalities c ON c.functionality_id = rf.functionality_id AND c.functionality_name = 'appstv_case_create' ) owners
 JOIN functionalities f ON f.functionality_name IN ( 'appstv_case_customer_search', 'appstv_case_customer_add', 'appstv_case_contacts',
                                                     'appstv_case_models', 'appstv_case_draft_list', 'appstv_case_draft_get',
-                                                    'appstv_case_draft_save', 'appstv_case_draft_delete', 'appstv_case_history',
+                                                    'appstv_case_draft_save', 'appstv_case_draft_delete', 'appstv_case_history_get',
                                                     'appstv_case_media_upload', 'appstv_case_media_delete',
                                                     'appstv_case_tv_case_add', 'appstv_case_tv_case_remove' )
 WHERE NOT EXISTS ( SELECT 1 FROM roles_functionalities x WHERE x.role_id = owners.role_id AND x.functionality_id = f.functionality_id );

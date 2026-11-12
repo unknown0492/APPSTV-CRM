@@ -84,3 +84,132 @@
 .sc-tl-service .sc-tl-icon { background: #e8fff3; color: #50cd89; }
 .sc-tl-close .sc-tl-icon   { background: #e8fff3; color: #50cd89; }
 .sc-tl-body { flex: 1; min-width: 0; }
+
+/* =============================================
+   Drafts list and "Open a service case" wizard (v1.0.21)
+   ============================================= */
+
+/* Drafts */
+.sc-draft {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 0; border-bottom: 1px dashed #eff2f5;
+}
+.sc-draft:last-child { border-bottom: 0; }
+.sc-draft-main { min-width: 0; flex: 1; }
+.sc-draft-problem { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-draft-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+@media (max-width: 575.98px) {
+    .sc-draft { flex-direction: column; align-items: stretch; }
+    .sc-draft-actions { justify-content: flex-end; }
+}
+
+/* Progress: numbered steps */
+.scw-steps { display: flex; flex-wrap: wrap; gap: 6px; }
+.scw-dot {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px;
+    border: 0; border-radius: 2rem; background: #f5f8fa; color: #7e8299; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+}
+.scw-dot-n {
+    width: 24px; height: 24px; border-radius: 50%; background: #e4e6ef; color: #5e6278;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem;
+}
+.scw-dot.is-current { background: #f1faff; color: #009ef7; }
+.scw-dot.is-current .scw-dot-n { background: #009ef7; color: #fff; }
+.scw-dot.is-done .scw-dot-n { background: #50cd89; color: #fff; }
+.scw-dot-n i, .scw-chip i, .scw-option i { color: inherit; }   /* The theme greys icons inside buttons */
+@media (max-width: 575.98px) {
+    .scw-dot-t { display: none; }                               /* Numbers only on a phone */
+    .scw-dot { padding: 4px; }
+}
+
+/* Blocks of a step */
+.scw-block { margin-bottom: 28px; }
+.scw-block:last-child { margin-bottom: 0; }
+.scw-block-title { font-size: 1.05rem; font-weight: 700; color: #181c32; margin-bottom: 12px; }
+.scw-block-title.required::after { content: " *"; color: #f1416c; }
+.scw-subform { margin-top: 12px; padding: 16px; border: 1px solid #e4e6ef; border-radius: 0.65rem; background: #fcfcfd; }
+.scw-dropdown-add { color: #009ef7; font-weight: 600; }
+
+/* Toggle chips (tick one or more) */
+.scw-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.scw-chip {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 64px; padding: 8px 16px;
+    border: 1px solid #e4e6ef; border-radius: 0.65rem; background: #fff; color: #3f4254; font-weight: 600; font-size: 0.95rem; cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.scw-chip:hover { border-color: #009ef7; }
+.scw-chip.is-on { background: #009ef7; border-color: #009ef7; color: #fff; }
+.scw-chip:focus-visible, .scw-big:focus-visible, .scw-option:focus-visible, .scw-dot:focus-visible { outline: 2px solid #009ef7; outline-offset: 2px; }
+
+/* Big choice buttons (One / More than one) */
+.scw-choice-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 520px; }
+.scw-big {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 96px;
+    border: 2px solid #e4e6ef; border-radius: 0.85rem; background: #fff; color: #3f4254; font-weight: 700; font-size: 1.05rem; cursor: pointer;
+}
+.scw-big i { font-size: 1.6rem; color: #a1a5b7; }
+.scw-big.is-on { border-color: #009ef7; background: #f1faff; color: #009ef7; }
+.scw-big.is-on i { color: #009ef7; }
+.scw-count { max-width: 160px; font-size: 1.2rem; font-weight: 700; }
+
+/* Options (choose one) */
+.scw-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.scw-option {
+    display: flex; align-items: flex-start; gap: 12px; text-align: left; padding: 14px 16px; min-height: 56px;
+    border: 1px solid #e4e6ef; border-radius: 0.65rem; background: #fff; color: #3f4254; cursor: pointer;
+}
+.scw-option:disabled { opacity: 0.45; cursor: not-allowed; }
+.scw-option.is-on { border-color: #009ef7; background: #f1faff; }
+.scw-radio {
+    flex: 0 0 20px; width: 20px; height: 20px; margin-top: 1px; border: 2px solid #b5b5c3; border-radius: 50%; position: relative;
+}
+.scw-option.is-on .scw-radio { border-color: #009ef7; }
+.scw-option.is-on .scw-radio::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%; background: #009ef7;
+}
+
+/* TV models grouped by series */
+.scw-model-group { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px dashed #eff2f5; }
+.scw-model-group:last-child { border-bottom: 0; }
+.scw-model-series { flex: 0 0 64px; font-weight: 700; color: #5e6278; }
+@media (max-width: 575.98px) {
+    .scw-model-group { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .scw-model-series { flex-basis: auto; }
+}
+
+/* Summary */
+.scw-summary { border: 1px solid #eff2f5; border-radius: 0.65rem; padding: 4px 16px; background: #fcfcfd; }
+.scw-sum-row { display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px dashed #eff2f5; }
+.scw-sum-row:last-child { border-bottom: 0; }
+.scw-sum-k { flex: 0 0 120px; color: #7e8299; font-weight: 600; }
+.scw-sum-v { flex: 1; min-width: 0; color: #181c32; white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 575.98px) {
+    .scw-sum-row { flex-direction: column; gap: 2px; }
+    .scw-sum-k { flex-basis: auto; font-size: 0.85rem; }
+}
+
+/* Footer: Back left, the rest right; full-width buttons on a phone */
+.scw-footer { justify-content: flex-start; }
+.scw-footer #scw_save_draft { margin-left: auto; }
+@media (max-width: 575.98px) {
+    .scw-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .scw-footer > .btn { margin: 0 !important; }
+    .scw-footer #scw_next, .scw-footer #scw_open { grid-column: 1 / -1; order: -1; }
+}
+
+/* Case details: wizard fields and history */
+.sc-kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 16px; }
+.sc-kv-k { color: #7e8299; font-size: 0.9rem; }
+.sc-kv-v { min-width: 0; word-break: break-word; }
+@media (max-width: 575.98px) { .sc-kv { grid-template-columns: 1fr; gap: 0 0; } .sc-kv-v { margin-bottom: 8px; } }
+.sc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.sc-tv-case {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left;
+    padding: 8px 12px; border: 1px solid #eff2f5; border-radius: 0.475rem; margin-bottom: 6px; background: #fff; cursor: pointer;
+}
+.sc-tv-case:hover { border-color: #009ef7; }
+.sc-tv-case.is-current { border-color: #009ef7; background: #f1faff; cursor: default; opacity: 1; color: inherit; }
+.sc-history { max-height: 420px; overflow-y: auto; }
+.sc-history-line { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px dashed #eff2f5; font-size: 0.9rem; }
+.sc-history-line:last-child { border-bottom: 0; }
+@media (max-width: 575.98px) { .sc-history-line { flex-direction: column; gap: 2px; } }

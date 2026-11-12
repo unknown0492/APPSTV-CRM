@@ -61,6 +61,15 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
             </div>
         </div>
 
+        <!-- Drafts of cases not opened yet (shared by everyone) -->
+        <div class="card mb-5 d-none" id="sc_drafts">
+            <div class="card-header min-h-50px">
+                <div class="card-title"><h4 class="mt-2 mb-0">Drafts <span class="badge badge-light-warning ms-2 align-middle" id="sc_drafts_count">0</span></h4></div>
+                <div class="card-toolbar text-muted fs-7">Cases being filled in, not opened yet</div>
+            </div>
+            <div class="card-body py-3" id="sc_drafts_list"></div>
+        </div>
+
         <div id="sc_list" class="row g-4"></div>
         <div id="sc_empty" class="text-center text-muted py-10 d-none">No cases match these filters.</div>
 
@@ -68,72 +77,7 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
 </div>
 <!--end::Post-->
 
-<!-- New case -->
-<div class="modal fade" id="sc_new_modal" tabindex="-1" data-bs-focus="false" data-bs-backdrop="static">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-md-down">
-        <div class="modal-content">
-            <div class="modal-header py-4">
-                <h3 class="modal-title">New service case</h3>
-                <button type="button" class="btn btn-icon btn-sm btn-active-light-primary" data-bs-dismiss="modal" aria-label="Close"><i class="fa-solid fa-xmark fs-2"></i></button>
-            </div>
-            <div class="modal-body">
-                <!-- TV first: finds the customer -->
-                <label class="form-label">TV serial number <span class="text-muted fw-normal">(finds the customer)</span></label>
-                <div class="input-group mb-2">
-                    <input type="text" id="sc_new_serial" class="form-control form-control-solid font-monospace" placeholder="Type or scan, press Enter" autocomplete="off" autocapitalize="characters" />
-                    <button type="button" class="btn btn-light-primary" id="sc_new_find">Find</button>
-                    <button type="button" class="btn btn-primary" id="sc_new_scan"><i class="fa-solid fa-camera"></i></button>
-                </div>
-                <div id="sc_new_found" class="mb-3"></div>
-                <div id="sc_new_tvs" class="mb-5"></div>
-
-                <label class="form-label required">Customer</label>
-                <div id="sc_new_customer_box" class="position-relative mb-5">
-                    <input type="search" id="sc_new_customer_search" class="form-control form-control-solid" placeholder="Search company, name, email, mobile or customer ID" autocomplete="off" />
-                    <div id="sc_new_customer_results" class="sc-dropdown d-none"></div>
-                </div>
-                <div id="sc_new_customer_selected" class="sc-selected d-none mb-5">
-                    <div><div class="fw-bold" id="sc_new_customer_name"></div><div class="text-muted fs-7" id="sc_new_customer_sub"></div></div>
-                    <button type="button" class="btn btn-sm btn-light" id="sc_new_customer_change">Change</button>
-                </div>
-
-                <div class="row g-4">
-                    <div class="col-12 col-md-6">
-                        <label class="form-label" for="sc_new_contact_name">Contact person</label>
-                        <input type="text" id="sc_new_contact_name" class="form-control form-control-solid" maxlength="200" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <label class="form-label" for="sc_new_contact_phone">Contact phone</label>
-                        <input type="tel" id="sc_new_contact_phone" class="form-control form-control-solid" maxlength="50" />
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label required" for="sc_new_problem">Problem reported</label>
-                        <textarea id="sc_new_problem" class="form-control form-control-solid" rows="3" maxlength="5000" placeholder="What the customer reported"></textarea>
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <label class="form-label" for="sc_new_assigned">Assign to</label>
-                        <select id="sc_new_assigned" class="form-select form-select-solid sc-staff-select"></select>
-                    </div>
-                    <div class="col-7 col-md-3">
-                        <label class="form-label" for="sc_new_visit_date">Visit date</label>
-                        <input type="date" id="sc_new_visit_date" class="form-control form-control-solid" />
-                    </div>
-                    <div class="col-5 col-md-3">
-                        <label class="form-label" for="sc_new_visit_time">Time</label>
-                        <input type="time" id="sc_new_visit_time" class="form-control form-control-solid" />
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer py-3">
-                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="sc_new_save">
-                    <span class="indicator-label">Open case</span>
-                    <span class="indicator-progress">Saving… <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+<?php include dirname( __DIR__ ) . "/snippets/service_case_wizard.php"; ?>
 
 <!-- Case details -->
 <div class="modal fade" id="sc_case_modal" tabindex="-1" data-bs-focus="false">
@@ -155,3 +99,4 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
 <script src="assets/appstv/js/appstv_scanner.js?v=<?= @filemtime( $sc_assets . '/js/appstv_scanner.js' ) ?>"></script>
 <script src="assets/appstv/js/appstv_service_forms.js?v=<?= @filemtime( $sc_assets . '/js/appstv_service_forms.js' ) ?>"></script>
 <script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js?v=<?= @filemtime( $sc_js ) ?>"></script>
+<script src="plugins/<?=$plugin_name ?>/js/service_case_wizard.js?v=<?= @filemtime( dirname( __DIR__ ) . '/js/service_case_wizard.js' ) ?>"></script>
