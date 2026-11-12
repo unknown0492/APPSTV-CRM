@@ -7,7 +7,8 @@
    SCMedia: one gallery + uploader in a container (the wizard's Photos & videos step, the case window's tab).
      var g = new SCMedia( $container, { target: function () { return { case_id: 12 } }, editable: true, onChange: fn } );
      g.setMedia( list );           // [ { id, kind, state, name, size, has_thumb, error, ... } ] from the server
-   Adding: pick several files; photos can be rotated / cropped first (Cropper.js), then each photo is reduced to
+   Adding: pick several files (they wait so photos can be rotated / cropped first, Cropper.js) or drag them onto the
+   gallery (they upload at once); Cancel stops an upload in the middle (pieces aborted, server copy removed). Each photo is reduced to
    1600 px JPEG in the browser; "Upload" sends every file in 1.5 MB pieces (4 pieces at a time, 2 files at a time,
    3 retries per piece) with a % bar per file. Videos up to 500 MB go as they are and are converted on the server.
    SCMViewer: full-screen viewer of the photos / videos of a gallery (previous / next, download).
@@ -69,14 +70,42 @@ SCMedia.prototype.build = function () {
         html += '<div class="scm-add">'
              + '<label class="btn btn-light-primary scm-add-btn"><i class="fa-solid fa-camera me-2"></i>Add photos / videos'
              + '<input type="file" class="d-none scm-input" accept="image/*,video/*" multiple /></label>'
-             + '<div class="text-muted fs-7">Photos are reduced to 1600 px; videos up to 500 MB are converted to under 25 MB.</div></div>'
+             + '<div class="text-muted fs-7">Or drag photos / videos here. Photos are reduced to 1600 px; videos up to 500 MB are converted to under 25 MB.</div></div>'
              + '<div class="scm-queue d-none"><div class="scm-queue-head"><div class="fw-semibold">Ready to upload <span class="scm-queue-n"></span></div>'
-             + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light scm-clear">Remove all</button>'
+             + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light scm-clear">Remove waiting</button>'
+             + '<button type="button" class="btn btn-sm btn-light-danger scm-cancel-all d-none"><i class="fa-solid fa-ban me-1"></i>Cancel uploads</button>'
              + '<button type="button" class="btn btn-sm btn-primary scm-start"><i class="fa-solid fa-cloud-arrow-up me-1"></i>Upload</button></div></div>'
              + '<div class="scm-grid scm-queue-grid"></div></div>';
     }
-    html += '<div class="scm-grid scm-gallery"></div><div class="scm-empty text-muted fs-7 d-none">No photos or videos yet.</div>';
-    this.$box.html( html );
+    html += '<div class="scm-grid scm-gallery"></div><div class="scm-empty text-muted fs-7 d-none">No photos or videos yet.</div>'
+          + '<div class="scm-drop" aria-hidden="true"><div><i class="fa-solid fa-cloud-arrow-up"></i><div>Drop photos / videos to upload them</div></div></div>';
+    this.$box.addClass( 'scm-box' ).html( html );
+
+    // Drag and drop: the whole gallery takes the files and uploads them at once
+    var depth = 0;                                             // dragenter / dragleave pairs (children fire them too)
+    var hasFiles = function ( e ) { var t = e.originalEvent.dataTransfer; return t && $.inArray( 'Files', t.types ) !== -1; };
+    this.$box.on( 'dragenter', function ( e ) {
+        if ( !self.options.editable || !hasFiles( e ) ) { return; }
+        e.preventDefault();
+        depth++;
+        self.$box.addClass( 'is-drag' );
+    } );
+    this.$box.on( 'dragover', function ( e ) {
+        if ( !self.options.editable || !hasFiles( e ) ) { return; }
+        e.preventDefault();
+        e.originalEvent.dataTransfer.dropEffect = 'copy';
+    } );
+    this.$box.on( 'dragleave', function () {
+        depth = Math.max( 0, depth - 1 );
+        if ( depth === 0 ) { self.$box.removeClass( 'is-drag' ); }
+    } );
+    this.$box.on( 'drop', function ( e ) {
+        if ( !self.options.editable || !hasFiles( e ) ) { return; }
+        e.preventDefault();
+        depth = 0;
+        self.$box.removeClass( 'is-drag' );
+        if ( self.add( e.originalEvent.dataTransfer.files ) > 0 ) { self.start(); }
+    } );
 
     this.$box.on( 'change', '.scm-input', function () {
         self.add( this.files );
@@ -84,9 +113,13 @@ SCMedia.prototype.build = function () {
     } );
     this.$box.on( 'click', '.scm-start', function () { self.start(); } );
     this.$box.on( 'click', '.scm-clear', function () {
-        self.queue = self.queue.filter( function ( q ) { return q.state === 'uploading'; } );
+        self.queue = self.queue.filter( function ( q ) { return q.state === 'uploading' || q.state === 'preparing'; } );
         self.drawQueue();
     } );
+    this.$box.on( 'click', '.scm-cancel-all', function () {
+        $.each( self.queue.slice(), function ( i, q ) { if ( q.state === 'uploading' || q.state === 'preparing' ) { self.cancel( q.id ); } } );
+    } );
+    this.$box.on( 'click', '[data-q-cancel]', function () { self.cancel( +$( this ).attr( 'data-q-cancel' ) ); } );
     this.$box.on( 'click', '[data-q-remove]', function () { self.removeQueued( +$( this ).attr( 'data-q-remove' ) ); } );
     this.$box.on( 'click', '[data-q-rotate]', function () { self.rotateQueued( +$( this ).attr( 'data-q-rotate' ) ); } );
     this.$box.on( 'click', '[data-q-crop]', function () { self.cropQueued( +$( this ).attr( 'data-q-crop' ) ); } );
@@ -139,22 +172,41 @@ SCMedia.prototype.drawGallery = function () {
 };
 
 /**
- * @description Adds picked files to the queue (photos and videos only)
+ * @description Adds picked / dropped files to the queue (photos and videos only)
  * @param {FileList} files - Picked files
- * @returns {void}
+ * @returns {number} Files added
  */
 SCMedia.prototype.add = function ( files ) {
     var self = this;
     var refused = [];
+    var added = 0;
     $.each( files, function ( i, file ) {
         var kind = /^video\//.test( file.type ) ? 'video' : ( /^image\//.test( file.type ) || /\.(heic|heif)$/i.test( file.name ) ? 'photo' : '' );
         if ( !kind ) { refused.push( file.name + ' (not a photo or video)' ); return; }
         if ( kind === 'video' && file.size > SCMedia.MAX_VIDEO ) { refused.push( file.name + ' (larger than 500 MB)' ); return; }
         self.queue.push( { id: ++self.seq, file: file, kind: kind, url: kind === 'photo' ? URL.createObjectURL( file ) : '', rotate: 0, edited: null,
-                           state: 'ready', progress: 0, error: '' } );
+                           state: 'ready', progress: 0, error: '', xhrs: [], mediaId: 0, cancelled: false } );
+        added++;
     } );
     if ( refused.length ) { Swal.fire( { icon: 'warning', title: 'Not added', html: refused.map( SC.esc ).join( '<br/>' ), buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary' } } ); }
     this.drawQueue();
+    return added;
+};
+
+/**
+ * @description Stops an upload in the middle: aborts its pieces, removes the part already on the server
+ * @param {number} id - Local id
+ * @returns {void}
+ */
+SCMedia.prototype.cancel = function ( id ) {
+    var q = this.find( id );
+    if ( !q ) { return; }
+    q.cancelled = true;
+    $.each( q.xhrs, function ( i, x ) { if ( x && x.abort ) { x.abort(); } } );
+    q.xhrs = [];
+    if ( q.mediaId ) { SC.post( { what_do_you_want: 'appstv_case_media_delete', media_id: q.mediaId } ).catch( function () { /* the daily clean-up removes it */ } ); }
+    this.removeQueued( id );
+    showSimpleToast( 'info', 'Upload of ' + q.file.name + ' cancelled.' );
 };
 
 /**
@@ -170,7 +222,10 @@ SCMedia.prototype.find = function ( id ) { return this.queue.filter( function ( 
  */
 SCMedia.prototype.drawQueue = function () {
     var waiting = this.queue.filter( function ( q ) { return q.state === 'ready' || q.state === 'failed'; } ).length;
+    var moving = this.queue.filter( function ( q ) { return q.state === 'uploading' || q.state === 'preparing'; } ).length;
     this.$box.find( '.scm-queue' ).toggleClass( 'd-none', this.queue.length === 0 );
+    this.$box.find( '.scm-cancel-all' ).toggleClass( 'd-none', moving === 0 );
+    this.$box.find( '.scm-clear' ).toggleClass( 'd-none', moving === this.queue.length );
     this.$box.find( '.scm-queue-n' ).text( '(' + this.queue.length + ')' );
     this.$box.find( '.scm-start' ).prop( 'disabled', waiting === 0 ).html( '<i class="fa-solid fa-cloud-arrow-up me-1"></i>Upload' + ( waiting ? ' ' + waiting + ' file' + ( waiting > 1 ? 's' : '' ) : '' ) );
     this.$box.find( '.scm-queue-grid' ).html( $.map( this.queue, function ( q ) {
@@ -185,8 +240,9 @@ SCMedia.prototype.drawQueue = function () {
                     + '<button type="button" data-q-remove="' + q.id + '" title="Remove" aria-label="Remove"><i class="fa-solid fa-xmark"></i></button></div>';
         }
         var status = '';
-        if ( q.state === 'uploading' ) { status = '<div class="scm-progress"><div style="width:' + q.progress + '%"></div></div><span class="scm-badge">' + q.progress + '%</span>'; }
-        if ( q.state === 'preparing' ) { status = '<span class="scm-badge"><span class="spinner-border spinner-border-sm me-1"></span>Preparing…</span>'; }
+        var cancel = '<div class="scm-tools"><button type="button" class="scm-cancel" data-q-cancel="' + q.id + '" title="Cancel upload" aria-label="Cancel upload"><i class="fa-solid fa-xmark"></i></button></div>';
+        if ( q.state === 'uploading' ) { status = '<div class="scm-progress"><div style="width:' + q.progress + '%"></div></div><span class="scm-badge">' + q.progress + '%</span>' + cancel; }
+        if ( q.state === 'preparing' ) { status = '<span class="scm-badge"><span class="spinner-border spinner-border-sm me-1"></span>Preparing…</span>' + cancel; }
         if ( q.state === 'failed' ) {
             status = '<span class="scm-badge scm-badge-fail" title="' + SC.esc( q.error ) + '">Failed</span>'
                    + '<div class="scm-tools"><button type="button" data-q-retry="' + q.id + '" title="Try again" aria-label="Try again"><i class="fa-solid fa-rotate"></i></button>'
@@ -345,13 +401,21 @@ SCMedia.prototype.uploadOne = function ( q, target ) {
         q.state = 'uploading';
         self.drawQueue();
         var name = q.kind === 'photo' && blob.type === 'image/jpeg' ? q.file.name.replace( /\.[^.]+$/, '' ) + '.jpg' : q.file.name;
+        if ( q.cancelled ) { throw 'cancelled'; }
         return SC.post( $.extend( { what_do_you_want: 'appstv_case_media_upload', step: 'start', kind: q.kind, name: name, size: blob.size, type: blob.type || q.file.type }, target ) );
     } ).then( function ( started ) {
         info = started.data;
+        q.mediaId = info.media_id;
+        if ( q.cancelled ) {                                   // Cancelled while starting: remove the new row
+            SC.post( { what_do_you_want: 'appstv_case_media_delete', media_id: info.media_id } ).catch( function () {} );
+            throw 'cancelled';
+        }
         return self.sendParts( q, blob, info );
     } ).then( function () {
+        if ( q.cancelled ) { throw 'cancelled'; }
         return SC.post( { what_do_you_want: 'appstv_case_media_upload', step: 'finish', media_id: info.media_id, key: info.key } );
     } ).then( function ( finished ) {
+        if ( q.cancelled ) { throw 'cancelled'; }
         if ( q.url ) { URL.revokeObjectURL( q.url ); }
         if ( q.edited ) { URL.revokeObjectURL( q.edited.url ); }
         self.queue = self.queue.filter( function ( x ) { return x.id !== q.id; } );
@@ -360,6 +424,7 @@ SCMedia.prototype.uploadOne = function ( q, target ) {
         self.drawGallery();
         self.options.onChange( self.media );
     } ).catch( function ( message ) {
+        if ( q.cancelled ) { return; }                         // Already taken off the queue by cancel()
         q.state = 'failed';
         q.error = String( message );
         self.drawQueue();
@@ -384,16 +449,19 @@ SCMedia.prototype.sendParts = function ( q, blob, info ) {
         fd.append( 'key', info.key );
         fd.append( 'index', index );
         fd.append( 'chunk', blob.slice( index * info.chunk_size, Math.min( blob.size, ( index + 1 ) * info.chunk_size ) ), 'part' );
+        if ( q.cancelled ) { return Promise.reject( 'cancelled' ); }
         return new Promise( function ( resolve, reject ) {
-            $.ajax( { url: getWebservice(), type: 'POST', data: fd, processData: false, contentType: false, timeout: 120000,
+            var xhr = $.ajax( { url: getWebservice(), type: 'POST', data: fd, processData: false, contentType: false, timeout: 120000,
                 success: function ( raw ) {
                     var j = parseJSONWithError( raw, '' );
                     if ( j && j[ 0 ] && j[ 0 ].type === 'success' ) { resolve(); return; }
                     reject( j && j[ 0 ] && j[ 0 ].info && j[ 0 ].info.message ? j[ 0 ].info.message : 'Server error' );
                 },
-                error: function () { reject( 'Connection lost' ); } } );
+                error: function () { reject( q.cancelled ? 'cancelled' : 'Connection lost' ); },
+                complete: function () { q.xhrs = q.xhrs.filter( function ( x ) { return x !== xhr; } ); } } );
+            q.xhrs.push( xhr );
         } ).catch( function ( message ) {
-            if ( tries >= SCMedia.RETRIES ) { throw message; }
+            if ( q.cancelled || tries >= SCMedia.RETRIES ) { throw message; }
             return new Promise( function ( r ) { setTimeout( r, 1500 * ( tries + 1 ) ); } ).then( function () { return sendOne( index, tries + 1 ); } );
         } );
     };

@@ -15,6 +15,7 @@ var SC = {
     staff : [],                                                // [ { user_id, name } ] that cases can be assigned to
     me : '',                                                   // user_id of the signed-in user
     current : null,                                            // Data of the open case (appstv_case_get)
+    today : '',                                                // Today in Singapore (from the list), for the card strips
     tab : 'overview',                                          // Tab shown in the case window
     gallery : null,                                            // Photos / videos of the open case (SCMedia)
     NOTE_TYPES : [ 'note', 'status', 'service', 'close', 'reopen' ],   // Timeline lines shown on the Notes tab (the rest is in History)
@@ -148,6 +149,7 @@ var SC = {
             SC.loadList();
         } );
         $( '#sc_list' ).on( 'click', '[data-case-id]', function () { SC.openCase( +$( this ).attr( 'data-case-id' ) ); } );
+        $( '#sc_list' ).on( 'keydown', '[data-case-id]', function ( e ) { if ( e.key === 'Enter' || e.key === ' ' ) { e.preventDefault(); SC.openCase( +$( this ).attr( 'data-case-id' ) ); } } );
 
         // New case: the wizard
         $( '#sc_new_case' ).on( 'click', function () { SCW.openNew(); } );
@@ -223,6 +225,7 @@ var SC = {
             .then( function ( info ) {
                 if ( seq !== SC.listSeq ) { return; }
                 var d = info.data;
+                SC.today = d.today;
                 $.each( d.counts, function ( k, v ) { $( '#sc_count_' + k ).text( v ); } );
                 $( '[data-sc-chip="overdue"]' ).toggleClass( 'is-zero', d.counts.overdue === 0 );
                 $( '[data-sc-chip="today"]' ).toggleClass( 'is-zero', d.counts.today === 0 );
@@ -232,45 +235,70 @@ var SC = {
     },
 
     /**
-     * @description HTML of one case card
+     * @description HTML of one case card: status strip (what needs attention), customer and complainant, problem,
+     *              footer (visit dates, staff, TVs, photos, notes)
      * @param {object} c - Case from appstv_case_list
      * @returns {string}
      */
     cardHtml : function ( c ) {
-        var due = '';
-        if ( !c.visit_date && c.visit_to ) {
-            // Visit window (wizard cases)
-            var wl = { overdue: 'Visit deadline missed', today: 'Visit window', upcoming: 'Visit' }[ c.due ] || 'Visit';
-            var wc = { overdue: 'badge-danger', today: 'badge-warning', upcoming: 'badge-light-info' }[ c.due ] || 'badge-light';
-            due = '<span class="badge ' + wc + '"><i class="fa-regular fa-calendar me-1' + ( c.due === 'overdue' || c.due === 'today' ? ' text-white' : '' ) + '"></i>'
-                + wl + ' · ' + SC.esc( SC.showDate( c.visit_from ) ) + ( c.visit_to !== c.visit_from ? ' – ' + SC.esc( SC.showDate( c.visit_to ) ) : '' ) + '</span>';
-        }
-        if ( c.visit_date ) {
-            var label = { overdue: 'Overdue', today: 'Today', upcoming: '' }[ c.due ] || '';
-            var cls = { overdue: 'badge-danger', today: 'badge-warning', upcoming: 'badge-light-info' }[ c.due ] || 'badge-light';
-            due = '<span class="badge ' + cls + '"><i class="fa-regular fa-calendar me-1' + ( c.due === 'overdue' || c.due === 'today' ? ' text-white' : '' ) + '"></i>'
-                + ( label ? label + ' · ' : '' ) + SC.esc( SC.showDate( c.visit_date ) ) + ( c.visit_time ? ' ' + SC.esc( c.visit_time ) : '' ) + '</span>';
-        }
+        var strip = SC.cardStrip( c );
+        var dates = '';
+        if ( c.visit_date ) { dates = SC.showDate( c.visit_date ) + ( c.visit_time ? ' ' + c.visit_time : '' ); }
+        else if ( c.visit_to ) { dates = SC.shortRange( c.visit_from, c.visit_to ); }
+        var staff = ( c.staff_names && c.staff_names.length ? c.staff_names.join( ', ' ) : c.assigned_name ) || 'Not assigned';
+        var tvs = c.tv_case_count ? c.tv_case_count + ' TV cases' : ( c.tv_count > 1 ? c.tv_count + ' TVs' : ( c.serials ? '1 TV' : '' ) );
+        var chips = $.map( ( c.problem_types || [] ).slice( 0, 3 ), function ( p ) { return '<span class="scc-chip">' + SC.esc( SCW.PROBLEMS[ p ] || p ) + '</span>'; } ).join( '' )
+                  + ( ( c.problem_types || [] ).length > 3 ? '<span class="scc-chip scc-chip-more">+' + ( c.problem_types.length - 3 ) + '</span>' : '' );
         return '<div class="col-12 col-md-6 col-xxl-4">'
-            + '<div class="sc-card sc-due-' + ( c.due || 'none' ) + '" data-case-id="' + c.id + '" role="button" tabindex="0">'
-            + '  <div class="d-flex flex-wrap gap-2 align-items-center mb-2">'
-            + '    <span class="fw-bold text-gray-800">' + SC.esc( c.label || 'SC-' + c.id ) + '</span>'
-            + ( c.tv_case_count ? '<span class="badge badge-light">' + c.tv_case_count + ' TV cases</span>' : ( c.tv_count > 1 ? '<span class="badge badge-light">' + c.tv_count + ' TVs</span>' : '' ) )
-            + '    <span class="badge ' + SC.STATUS_BADGE[ c.status ] + '">' + SC.STATUS[ c.status ] + ( c.status === 'closed' && c.outcome ? ' · ' + SC.OUTCOME[ c.outcome ] : '' ) + '</span>'
-            + '    ' + due
-            + '  </div>'
-            + '  <div class="fw-bold fs-5 text-gray-900">' + SC.esc( c.customer_name || '(no customer)' ) + '</div>'
-            + ( c.contact_name || c.contact_phone ? '<div class="text-muted fs-7">' + SC.esc( [ c.contact_name, c.contact_phone ].filter( Boolean ).join( ' · ' ) ) + '</div>' : '' )
-            + '  <div class="sc-card-problem">' + SC.esc( c.problem ) + '</div>'
-            + '  <div class="d-flex flex-wrap gap-3 text-muted fs-7 mt-2">'
-            + ( c.serials ? '<span class="font-monospace"><i class="fa-solid fa-tv me-1"></i>' + SC.esc( c.serials ) + '</span>' : '' )
-            + '    <span><i class="fa-solid fa-user me-1"></i>' + SC.esc( ( c.staff_names && c.staff_names.length ? c.staff_names.join( ', ' ) : c.assigned_name ) || 'Not assigned' ) + '</span>'
-            + ( c.note_count ? '<span><i class="fa-regular fa-comment me-1"></i>' + c.note_count + '</span>' : '' )
-            + '  </div>'
-            + '</div></div>';
+            + '<div class="scc" data-case-id="' + c.id + '" role="button" tabindex="0" aria-label="' + SC.esc( ( c.label || 'SC-' + c.id ) + ', ' + c.customer_name + ', ' + strip.text ) + '">'
+            + '<div class="scc-strip scc-strip-' + strip.tone + '"><i class="fa-solid ' + strip.icon + ' me-2"></i><span class="text-truncate">' + SC.esc( strip.text ) + '</span></div>'
+            + '<div class="scc-body">'
+            + '  <div class="scc-top"><span class="scc-no">' + SC.esc( c.label || 'SC-' + c.id ) + '</span>'
+            + '    <span class="badge ' + SC.STATUS_BADGE[ c.status ] + '">' + SC.STATUS[ c.status ] + '</span></div>'
+            + '  <div class="scc-customer">' + SC.esc( c.customer_name || '(no customer)' ) + '</div>'
+            + ( c.contact_name || c.contact_phone ? '<div class="scc-contact">' + SC.esc( [ c.contact_name, c.contact_position ].filter( Boolean ).join( ' · ' ) )
+                + ( c.contact_phone ? '<span class="scc-phone"><i class="fa-solid fa-phone me-1"></i>' + SC.esc( c.contact_phone ) + '</span>' : '' ) + '</div>' : '' )
+            + ( chips ? '<div class="scc-chips">' + chips + '</div>' : '' )
+            + '  <div class="scc-problem">' + SC.esc( c.problem ) + '</div>'
+            + '</div>'
+            + '<div class="scc-foot">'
+            + '  <span title="Visit"><i class="fa-regular fa-calendar"></i>' + SC.esc( dates || 'Not planned' ) + '</span>'
+            + '  <span class="scc-staff" title="Assigned to"><i class="fa-solid fa-user"></i>' + SC.esc( staff ) + '</span>'
+            + ( tvs ? '<span title="TVs"><i class="fa-solid fa-tv"></i>' + SC.esc( tvs ) + '</span>' : '' )
+            + ( c.media_count ? '<span title="Photos / videos"><i class="fa-regular fa-image"></i>' + c.media_count + '</span>' : '' )
+            + ( c.note_count ? '<span title="Notes"><i class="fa-regular fa-comment"></i>' + c.note_count + '</span>' : '' )
+            + '</div></div></div>';
     },
 
-    // ── Case details ────────────────────────────────────────────
+    /**
+     * @description Status strip of a card: the one thing to know first
+     * @param {object} c - Case from appstv_case_list
+     * @returns {object} { tone: danger | warning | info | success | muted, icon, text }
+     */
+    cardStrip : function ( c ) {
+        if ( c.status === 'closed' ) { return { tone: 'success', icon: 'fa-flag-checkered', text: 'Closed' + ( c.outcome ? ' · ' + SC.OUTCOME[ c.outcome ] : '' ) }; }
+        if ( c.status === 'visited' ) { return { tone: 'muted', icon: 'fa-check', text: 'Visited · close the case when done' }; }
+        var due = SC.dueInfo( c, SC.today );
+        if ( due.tileClass === 'is-danger' ) { return { tone: 'danger', icon: 'fa-triangle-exclamation', text: 'Visit deadline missed · ' + due.text.replace( 'Deadline missed ', '' ) }; }
+        if ( due.tileClass === 'is-warning' ) { return { tone: 'warning', icon: 'fa-clock', text: due.badge + ' · ' + due.text }; }
+        if ( due.text ) { return { tone: 'info', icon: 'fa-calendar-day', text: 'Visit ' + due.text.toLowerCase() }; }
+        return { tone: 'muted', icon: 'fa-calendar-xmark', text: 'Visit not planned yet' };
+    },
+
+    /**
+     * @description Short date range: "10–11 Nov", "30 Nov – 2 Dec", one date when equal
+     * @param {string} from - 'YYYY-MM-DD'
+     * @param {string} to - 'YYYY-MM-DD'
+     * @returns {string}
+     */
+    shortRange : function ( from, to ) {
+        var M = [ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ];
+        var p = function ( ymd ) { return { d: +ymd.substr( 8, 2 ), m: M[ +ymd.substr( 5, 2 ) - 1 ], y: ymd.substr( 0, 4 ) }; };
+        var a = p( from || to ), b = p( to || from );
+        if ( from === to || !from ) { return b.d + ' ' + b.m; }
+        if ( a.m === b.m && a.y === b.y ) { return a.d + '–' + b.d + ' ' + b.m; }
+        return a.d + ' ' + a.m + ' – ' + b.d + ' ' + b.m;
+    },
 
     /**
      * @description Loads a case and shows it
@@ -342,7 +370,7 @@ var SC = {
             + '<input type="text" id="scd_contact_name" class="form-control form-control-sm form-control-solid mb-2" maxlength="200" placeholder="Name" value="' + SC.esc( c.contact_name ) + '"/>'
             + '<input type="tel" id="scd_contact_phone" class="form-control form-control-sm form-control-solid mb-2" maxlength="50" placeholder="Phone" value="' + SC.esc( c.contact_phone ) + '"/>'
             + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light" data-sc-action="cancel-edit">Cancel</button><button type="button" class="btn btn-sm btn-primary" data-sc-action="save-contact">Save</button></div></div>',
-            closed ? '' : '<button type="button" class="btn btn-link btn-sm p-0" data-sc-action="edit-contact">Edit</button>' );
+            closed ? '' : '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-contact"><i class="fa-solid fa-pen"></i>Edit</button>' );
 
         var visit = '<div id="scd_visit_view">';
         if ( c.visit_to ) {
@@ -356,7 +384,7 @@ var SC = {
               + '<input type="time" id="scd_visit_time" class="form-control form-control-sm form-control-solid sc-time" value="' + SC.esc( c.visit_time ) + '" aria-label="Visit time"/></div>'
               + '<input type="hidden" id="scd_assigned" value="' + SC.esc( c.assigned_user_id ) + '"/>'
               + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light" data-sc-action="cancel-edit">Cancel</button><button type="button" class="btn btn-sm btn-primary" data-sc-action="save-visit">Save</button></div></div>';
-        tiles += SC.tileHtml( 'fa-calendar-days', 'Visit', visit, closed ? '' : '<button type="button" class="btn btn-link btn-sm p-0" data-sc-action="edit-visit">' + ( c.visit_date ? 'Change date' : 'Plan the visit' ) + '</button>', due.tileClass );
+        tiles += SC.tileHtml( 'fa-calendar-days', 'Visit', visit, closed ? '' : '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-visit"><i class="fa-regular fa-calendar-plus"></i>' + ( c.visit_date ? 'Change date' : 'Plan the visit' ) + '</button>', due.tileClass );
 
         var staff = ( c.staff && c.staff.length ) ? c.staff.map( function ( s ) { return s.name || s.user_id; } ) : ( SC.staffName( c.assigned_user_id ) ? [ SC.staffName( c.assigned_user_id ) ] : [] );
         tiles += SC.tileHtml( 'fa-user-gear', 'Assigned to', staff.length ? '<div class="sc-tile-value">' + SC.esc( staff.join( ', ' ) ) + '</div>' : '<div class="sc-tile-value text-muted">Nobody yet</div>', '' );
@@ -379,7 +407,7 @@ var SC = {
 
         // Overview: problem, complaint, customer
         var chips = c.problem_types.length ? '<div class="sc-tags mb-3">' + $.map( c.problem_types, function ( p ) { return '<span class="sc-problem-chip">' + SC.esc( SCW.PROBLEMS[ p ] || p ) + '</span>'; } ).join( '' ) + '</div>' : '';
-        var overview = '<div class="sc-card-box"><div class="sc-box-head"><div class="sc-box-title">Problem</div>' + ( closed ? '' : '<button type="button" class="btn btn-link btn-sm p-0" data-sc-action="edit-problem">Edit</button>' ) + '</div>'
+        var overview = '<div class="sc-card-box"><div class="sc-box-head"><div class="sc-box-title">Problem</div>' + ( closed ? '' : '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-problem"><i class="fa-solid fa-pen"></i>Edit</button>' ) + '</div>'
             + chips + '<div id="scd_problem_view" class="sc-problem-text sc-pre">' + SC.esc( c.problem ) + '</div>'
             + '<div id="scd_problem_edit" class="d-none"><textarea id="scd_problem" class="form-control form-control-solid mb-2" rows="4" maxlength="5000">' + SC.esc( c.problem ) + '</textarea>'
             + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light" data-sc-action="cancel-edit">Cancel</button><button type="button" class="btn btn-sm btn-primary" data-sc-action="save-problem">Save</button></div></div></div>';
@@ -507,8 +535,11 @@ var SC = {
      */
     showHistory : function () {
         var c = SC.current.case;
+        var labels = {};                                   // case id => label, to name the TV case of a line
+        $.each( SC.current.tv_cases || [], function ( i, t ) { labels[ t.id ] = t.label; } );
+        if ( c.parent_case_id ) { labels[ c.parent_case_id ] = 'SC-' + c.parent_case_id; }
         SC.post( { what_do_you_want: 'appstv_case_history_get', case_id: c.id } ).then( function ( info ) {
-            Swal.fire( { title: 'History of ' + SC.esc( c.label ), html: '<div class="text-start sc-history sc-history-tall">' + SCH.listHtml( info.data.history ) + '</div>', width: 820,
+            Swal.fire( { title: 'History of ' + SC.esc( c.label ), html: '<div class="text-start sc-history sc-history-tall">' + SCH.listHtml( info.data.history, labels, c.id ) + '</div>', width: 820,
                          confirmButtonText: 'Close', buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary' } } );
         } ).catch( SC.toastError );
     },

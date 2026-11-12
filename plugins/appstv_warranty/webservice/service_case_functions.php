@@ -509,6 +509,7 @@ function appstv_case_list(){
                          WHERE k.id = c.id OR k.parent_case_id = c.id ) AS serials,
                        ( SELECT GROUP_CONCAT( s.user_id ORDER BY s.added_on SEPARATOR ',' ) FROM service_case_staff s WHERE s.case_id = c.id ) AS staff_ids,
                        ( SELECT COUNT(*) FROM service_cases k WHERE k.parent_case_id = c.id AND k.case_kind = 'tv' ) AS tv_case_count,
+                       ( SELECT COUNT(*) FROM service_case_media m WHERE m.case_id = c.id AND m.deleted_on = '' AND m.state <> 'uploading' ) AS media_count,
                        ( SELECT COUNT(*) FROM service_case_notes n WHERE n.case_id = c.id AND n.note_type = 'note' ) AS note_count
                 FROM service_cases c
                 LEFT JOIN customers cu ON cu.customer_id = c.customer_id
@@ -533,6 +534,8 @@ function appstv_case_list(){
                 'id' => (int) $row[ 'id' ], 'label' => appstv_case_label( $row ), 'kind' => $row[ 'case_kind' ], 'tv_count' => (int) $row[ 'tv_count' ],
                 'tv_case_count' => (int) $row[ 'tv_case_count' ], 'warranty_status' => $row[ 'warranty_status' ],
                 'visit_from' => (string) $row[ 'visit_from' ], 'visit_to' => (string) $row[ 'visit_to' ], 'staff_names' => $staff_names,
+                'problem_types' => (string) $row[ 'problem_types' ] === '' ? array() : explode( ',', $row[ 'problem_types' ] ),
+                'contact_position' => (string) $row[ 'contact_position' ], 'media_count' => (int) $row[ 'media_count' ],
                 'status' => $row[ 'status' ], 'outcome' => $row[ 'outcome' ],
                 'customer_name' => appstv_case_customer_name( $row ), 'contact_name' => $row[ 'contact_name' ], 'contact_phone' => $row[ 'contact_phone' ],
                 'problem' => $row[ 'problem' ], 'serials' => (string) $row[ 'serials' ],

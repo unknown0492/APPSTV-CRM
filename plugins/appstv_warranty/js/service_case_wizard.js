@@ -957,63 +957,155 @@ var SCW = {
 
 
 /* =============================================
-   SCH - change history lines as readable text (drafts and cases)
+   SCH - change history as plain sentences grouped by day (drafts and cases), e.g.
+         "10:42  Home Home changed the number of TVs from 1 to 3"
    ============================================= */
 var SCH = {
 
-    FIELDS : { customer: 'Customer', complainant: 'Complainant', complained_date: 'Complaint date', complained_time: 'Complaint time', channels: 'How they complained',
-               tv_count: 'Number of TVs', split: 'One case per TV', models: 'TV models', warranty: 'Warranty', warranty_status: 'Warranty',
-               problem_types: 'Problem', problem: 'Description', serials: 'Serial numbers', staff: 'Staff', visit_from: 'Visit from', visit_to: 'Visit to' },
-    ACTIONS : { draft_created: 'Started the draft', draft_deleted: 'Deleted the draft', opened: 'Opened the case' },
+    // Scalar fields: name used in a sentence ("changed the number of TVs from 1 to 3")
+    LABELS : { complained_date: 'complaint date', complained_time: 'complaint time', tv_count: 'number of TVs', warranty: 'warranty',
+               warranty_status: 'warranty', visit_from: 'first day of the visit window', visit_to: 'last day of the visit window' },
+    // List fields: what ticking / unticking an item reads like
+    LISTS : {
+        channels :      { add: 'noted that they complained by', remove: 'removed the complaint channel' },
+        problem_types : { add: 'ticked the problem', remove: 'unticked the problem' },
+        models :        { add: 'added the TV model', remove: 'removed the TV model' },
+        staff :         { add: 'assigned the case to', remove: 'took the case away from' },
+        serials :       { add: 'added the serial number', remove: 'removed the serial number' }
+    },
 
     /**
-     * @description Readable value of a history field
-     * @param {string} field - Field
-     * @param {string|null} raw - Stored value (JSON for lists / objects)
+     * @description Parses a stored history value (JSON for lists / objects)
+     * @param {string|null} raw - Stored value
+     * @returns {*}
+     */
+    parse : function ( raw ) {
+        if ( raw === null || raw === undefined || raw === '' ) { return null; }
+        if ( /^[\[{]/.test( raw ) ) { try { return JSON.parse( raw ); } catch ( e ) { return raw; } }
+        return raw;
+    },
+
+    /**
+     * @description Readable name of one list item
+     * @param {string} field - channels | problem_types | models | staff | serials
+     * @param {*} item - The item
      * @returns {string}
      */
-    value : function ( field, raw ) {
-        if ( raw === null || raw === '' ) { return '(empty)'; }
-        var v = raw;
-        if ( /^[\[{]/.test( raw ) ) { try { v = JSON.parse( raw ); } catch ( e ) { v = raw; } }
-        if ( field === 'customer' ) { return v && v.name ? v.name : '(none)'; }
-        if ( field === 'complainant' ) { return v ? [ v.name, v.position, v.phone, v.email ].filter( Boolean ).join( ', ' ) || '(empty)' : '(empty)'; }
-        if ( field === 'serials' ) { return $.isArray( v ) ? ( $.map( v, function ( s ) { return s.serial_number; } ).join( ', ' ) || '(none)' ) : String( v ); }
-        if ( /^(visit_from|visit_to|complained_date)$/.test( field ) ) { return SC.showDate( String( v ) ); }
-        if ( field === 'split' ) { return v === true || v === 'true' || v === '1' ? 'Yes' : 'No'; }
-        if ( field === 'warranty' || field === 'warranty_status' ) { return SCW.WARRANTY[ v ] || String( v ); }
-        if ( $.isArray( v ) ) {
-            var labels = { channels: SCW.CHANNELS, problem_types: SCW.PROBLEMS }[ field ];
-            if ( field === 'staff' ) { return $.map( v, function ( id ) { return SC.staffName( id ) || id; } ).join( ', ' ) || '(none)'; }
-            if ( field === 'models' ) {
-                return $.map( v, function ( id ) {
-                    if ( id === 'unsure' ) { return 'Not sure'; }
-                    var m = ( SCW.models || [] ).filter( function ( x ) { return x.product_id === id; } )[ 0 ];
-                    return m ? m.series + ' ' + m.size + '"' : id;
-                } ).join( ', ' ) || '(none)';
-            }
-            return $.map( v, function ( x ) { return labels && labels[ x ] ? labels[ x ] : x; } ).join( ', ' ) || '(none)';
+    itemName : function ( field, item ) {
+        if ( field === 'channels' ) { return SCW.CHANNELS[ item ] || item; }
+        if ( field === 'problem_types' ) { return SCW.PROBLEMS[ item ] || item; }
+        if ( field === 'staff' ) { return SC.staffName( item ) || item; }
+        if ( field === 'serials' ) { return item && item.serial_number ? item.serial_number : String( item ); }
+        if ( field === 'models' ) {
+            if ( item === 'unsure' ) { return '"Not sure"'; }
+            var m = ( SCW.models || [] ).filter( function ( x ) { return x.product_id === item; } )[ 0 ];
+            return m ? m.series + ' ' + m.size + '"' : item;
         }
+        return String( item );
+    },
+
+    /**
+     * @description Readable scalar value
+     * @param {string} field - Field
+     * @param {*} v - Value
+     * @returns {string}
+     */
+    valueText : function ( field, v ) {
+        if ( field === 'warranty' || field === 'warranty_status' ) { return SCW.WARRANTY[ v ] || String( v ); }
+        if ( /^(visit_from|visit_to|complained_date)$/.test( field ) ) { return SC.showDate( String( v ) ); }
         return String( v );
     },
 
     /**
-     * @description HTML of history lines (newest first)
-     * @param {Array} lines - [ { action, field, old, new, detail, by, on } ]
+     * @description The sentence of one history line (without who), as HTML
+     * @param {object} h - { action, field, old, new, detail }
      * @returns {string}
      */
-    listHtml : function ( lines ) {
+    sentence : function ( h ) {
+        var e = SC.esc;
+        var q = function ( text ) { return '<b>' + e( text ) + '</b>'; };
+        if ( h.action === 'draft_created' ) { return 'started the draft'; }
+        if ( h.action === 'draft_deleted' ) { return 'deleted the draft'; }
+        if ( h.action === 'opened' ) { return /^TV case/.test( h.detail ) ? 'opened this TV case' : 'opened the case'; }
+        if ( h.action === 'media_added' || h.action === 'media_removed' ) {
+            var m = /^(Photo|Video) (?:added|removed): (.*)$/.exec( h.detail || '' );
+            var what = m ? 'a ' + m[ 1 ].toLowerCase() : 'a photo / video';
+            return ( h.action === 'media_added' ? 'added ' : 'removed ' ) + what + ( m ? ': ' + q( m[ 2 ] ) : '' );
+        }
+        if ( h.action !== 'changed' ) { return e( h.detail || h.action.replace( /_/g, ' ' ) ); }
+
+        var f = h.field, o = SCH.parse( h.old ), n = SCH.parse( h.new );
+        if ( SCH.LISTS[ f ] ) {
+            var key = function ( x ) { return JSON.stringify( x && x.serial_number ? x.serial_number : x ); };
+            var ok = $.isArray( o ) ? o : [], nk = $.isArray( n ) ? n : [];
+            var added = nk.filter( function ( x ) { return ok.map( key ).indexOf( key( x ) ) === -1; } );
+            var removed = ok.filter( function ( x ) { return nk.map( key ).indexOf( key( x ) ) === -1; } );
+            var parts = [];
+            if ( added.length ) { parts.push( SCH.LISTS[ f ].add + ' ' + $.map( added, function ( x ) { return q( SCH.itemName( f, x ) ); } ).join( ', ' ) ); }
+            if ( removed.length ) { parts.push( SCH.LISTS[ f ].remove + ' ' + $.map( removed, function ( x ) { return q( SCH.itemName( f, x ) ); } ).join( ', ' ) ); }
+            return parts.join( ' and ' ) || 'changed the order of ' + e( f.replace( /_/g, ' ' ) );
+        }
+        if ( f === 'customer' ) {
+            if ( !o || !o.name ) { return 'chose the customer ' + q( n && n.name ? n.name : '?' ); }
+            if ( !n || !n.name ) { return 'removed the customer ' + q( o.name ); }
+            return 'changed the customer from ' + q( o.name ) + ' to ' + q( n.name );
+        }
+        if ( f === 'complainant' ) {
+            var person = function ( c ) { return c ? [ c.name, c.position, c.phone, c.email ].filter( Boolean ).join( ', ' ) : ''; };
+            var po = person( o ), pn = person( n );
+            if ( !po ) { return 'entered the person who complained: ' + q( pn ); }
+            if ( !pn ) { return 'cleared the person who complained'; }
+            if ( o.name === n.name ) { return 'updated the details of ' + q( n.name ) + ': ' + e( pn ); }
+            return 'changed the person who complained from ' + q( po ) + ' to ' + q( pn );
+        }
+        if ( f === 'split' ) {
+            return n === true || n === 'true' || n === '1' ? 'chose ' + q( 'One case per TV' ) : 'chose ' + q( 'One case for all the TVs' );
+        }
+        if ( f === 'problem' ) {
+            var text = String( n || '' );
+            return ( o ? 'rewrote the problem description' : 'described the problem' )
+                 + ( text ? '<div class="sc-hl-quote">“' + e( text.length > 220 ? text.substr( 0, 220 ) + '…' : text ) + '”</div>' : '' );
+        }
+        var label = SCH.LABELS[ f ] || f.replace( /_/g, ' ' );
+        var extra = h.detail ? ' <span class="text-muted">(' + e( h.detail.charAt( 0 ).toLowerCase() + h.detail.substr( 1 ) ) + ')</span>' : '';
+        if ( o === null ) { return 'set the ' + e( label ) + ' to ' + q( SCH.valueText( f, n ) ) + extra; }
+        if ( n === null ) { return 'cleared the ' + e( label ) + extra; }
+        return 'changed the ' + e( label ) + ' from ' + q( SCH.valueText( f, o ) ) + ' to ' + q( SCH.valueText( f, n ) ) + extra;
+    },
+
+    /**
+     * @description Day heading of a timestamp: Today, Yesterday, or "Wed, 11 Nov 2026"
+     * @param {Date} d - Moment
+     * @returns {string}
+     */
+    dayName : function ( d ) {
+        var day = function ( x ) { return x.getFullYear() + '-' + x.getMonth() + '-' + x.getDate(); };
+        var now = new Date();
+        var yesterday = new Date( now.getTime() - 86400000 );
+        if ( day( d ) === day( now ) ) { return 'Today'; }
+        if ( day( d ) === day( yesterday ) ) { return 'Yesterday'; }
+        return d.toLocaleDateString( [], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' } );
+    },
+
+    /**
+     * @description HTML of history lines (newest first) as plain sentences grouped by day
+     * @param {Array} lines - [ { action, field, old, new, detail, by, on, case_id } ]
+     * @param {object} [labels] - case_id => label, to name the TV case a line belongs to
+     * @param {number} [currentId] - The case shown (its lines get no label)
+     * @returns {string}
+     */
+    listHtml : function ( lines, labels, currentId ) {
         if ( !lines || !lines.length ) { return '<div class="text-muted fs-7">No history yet.</div>'; }
-        return $.map( lines, function ( h ) {
-            var what;
-            if ( h.action === 'changed' ) {
-                what = '<b>' + SC.esc( SCH.FIELDS[ h.field ] || h.field ) + '</b>: ' + SC.esc( SCH.value( h.field, h.old ) ) + ' <i class="fa-solid fa-arrow-right-long mx-1 text-muted"></i> ' + SC.esc( SCH.value( h.field, h.new ) );
-            } else {
-                what = '<b>' + SC.esc( SCH.ACTIONS[ h.action ] || h.action.replace( /_/g, ' ' ) ) + '</b>';
-            }
-            return '<div class="sc-history-line"><div>' + what + ( h.detail && h.action !== 'draft_created' && h.action !== 'draft_deleted' ? '<div class="text-muted fs-8">' + SC.esc( h.detail ) + '</div>' : '' ) + '</div>'
-                 + '<div class="text-muted fs-8 text-nowrap">' + SC.esc( h.by ) + ' · ' + SC.esc( SC.showStamp( h.on ) ) + '</div></div>';
-        } ).join( '' );
+        var html = '', lastDay = '';
+        $.each( lines, function ( i, h ) {
+            var d = new Date( h.on );
+            var dayName = isNaN( d.getTime() ) ? '' : SCH.dayName( d );
+            if ( dayName !== lastDay ) { html += '<div class="sc-hl-day">' + SC.esc( dayName ) + '</div>'; lastDay = dayName; }
+            var where = ( labels && h.case_id && h.case_id !== currentId && labels[ h.case_id ] ) ? '<span class="badge badge-light ms-2">' + SC.esc( labels[ h.case_id ] ) + '</span>' : '';
+            html += '<div class="sc-hl"><div class="sc-hl-time">' + ( isNaN( d.getTime() ) ? '' : d.toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } ) ) + '</div>'
+                  + '<div class="sc-hl-text"><span class="sc-hl-who">' + SC.esc( h.by || 'Someone' ) + '</span> ' + SCH.sentence( h ) + where + '</div></div>';
+        } );
+        return html;
     }
 };
 

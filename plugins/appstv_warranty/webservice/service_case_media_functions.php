@@ -294,6 +294,9 @@ function appstv_case_media_delete(){
         $now = create_iso_8601_datetime();
         appstv_case_db( "UPDATE service_case_media SET deleted_by = '$e_user', deleted_on = '$now' WHERE id = " . (int) $row[ 'id' ] );
         appstv_media_unlink( $row );
+        if( $row[ 'state' ] === 'uploading' ){
+            return array( "Upload cancelled.", array( 'media_id' => (int) $row[ 'id' ] ) );   // Never arrived: nothing for the history
+        }
         $label = ( $row[ 'kind' ] === 'photo' ? 'Photo' : 'Video' ) . ' removed: ' . $row[ 'original_name' ];
         appstv_case_history( $row[ 'case_id' ] === null ? null : (int) $row[ 'case_id' ], $row[ 'case_id' ] === null ? (int) $row[ 'draft_id' ] : null, 'media_removed', '', null, null, $label );
         return array( ( $row[ 'kind' ] === 'photo' ? "Photo" : "Video" ) . " removed.", array( 'media_id' => (int) $row[ 'id' ] ) );

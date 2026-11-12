@@ -326,3 +326,85 @@
 .scm-nav-prev { left: 12px; }
 .scm-nav-next { right: 12px; }
 @media (max-width: 575.98px) { .scm-viewer-stage { padding: 0 0 16px; } .scm-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); } }
+
+/* =============================================
+   v1.0.24: case card, rounded action buttons, classic tabs, history sentences, drag and drop
+   ============================================= */
+
+/* Case card: status strip first, then who / what, footer with the facts */
+.scc {
+    display: flex; flex-direction: column; height: 100%; background: #fff; border: 1px solid #e4e6ef; border-radius: 0.75rem;
+    overflow: hidden; cursor: pointer; transition: box-shadow 0.15s, transform 0.15s;
+}
+.scc:hover { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); transform: translateY(-1px); }
+.scc:focus-visible { outline: 2px solid #009ef7; outline-offset: 2px; }
+.scc-strip { display: flex; align-items: center; padding: 8px 16px; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.01em; min-width: 0; }
+.scc-strip i { color: inherit; }
+.scc-strip-danger  { background: #f1416c; color: #fff; }
+.scc-strip-warning { background: #ffc700; color: #3f3200; }
+.scc-strip-info    { background: #e1f3ff; color: #0073b7; }
+.scc-strip-success { background: #e8fff3; color: #1d8a52; }
+.scc-strip-muted   { background: #f1f1f4; color: #5e6278; }
+.scc-body { padding: 14px 16px 12px; flex: 1; min-width: 0; }
+.scc-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.scc-no { font-weight: 700; color: #7e8299; font-size: 0.9rem; }
+.scc-customer { font-size: 1.2rem; font-weight: 700; color: #181c32; line-height: 1.3; word-break: break-word; }
+.scc-contact { margin-top: 2px; color: #5e6278; font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.scc-phone { color: #3f4254; white-space: nowrap; }
+.scc-phone i { color: #a1a5b7; }
+.scc-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.scc-chip { padding: 2px 10px; border-radius: 2rem; background: #fff5f8; color: #d9214e; font-size: 0.78rem; font-weight: 600; }
+.scc-chip-more { background: #f1f1f4; color: #5e6278; }
+.scc-problem {
+    margin-top: 8px; color: #3f4254; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.scc-foot {
+    display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 16px; border-top: 1px solid #f1f1f4; background: #fcfcfd;
+    font-size: 0.85rem; color: #5e6278;
+}
+.scc-foot span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.scc-foot i { color: #a1a5b7; }
+.scc-staff { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Rounded action buttons (Edit, Plan the visit, Change date) - same height as the old links */
+.sc-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px !important; border-radius: 2rem !important;
+    background: #f1faff; color: #009ef7; border: 1px solid #cdeafe !important; font-size: 0.85rem; font-weight: 600; line-height: 1.4;
+}
+.sc-pill:hover, .sc-pill:focus { background: #009ef7; color: #fff; border-color: #009ef7 !important; }
+.sc-pill i { color: inherit; font-size: 0.8rem; }
+
+/* Classic tabs: the selected tab joins the panel below it, the others sit behind it */
+.sc-tabs { gap: 6px; padding: 0 4px; margin-bottom: 0; border-bottom: 1px solid #dbdfe9; overflow-x: auto; overflow-y: hidden; }
+.sc-tab {
+    padding: 11px 20px; background: #eef0f5; color: #5e6278; border: 1px solid #e1e4ec; border-bottom: 0;
+    border-radius: 0.75rem 0.75rem 0 0; margin-bottom: 0; margin-top: 4px;
+}
+.sc-tab:hover { background: #e3e7ef; color: #181c32; }
+.sc-tab.is-active {
+    background: #fff; color: #009ef7; border-color: #dbdfe9; border-bottom: 0; position: relative; top: 1px;
+    margin-top: 0; padding-top: 14px; box-shadow: inset 0 3px 0 #009ef7;
+}
+.sc-pane { background: #fff; border: 1px solid #dbdfe9; border-top: 0; border-radius: 0 0 0.75rem 0.75rem; padding: 20px; }
+.sc-pane .sc-card-box { background: #fcfcfd; }
+
+/* History as sentences, grouped by day */
+.sc-hl-day { margin: 14px 0 4px; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a5b7; }
+.sc-hl-day:first-child { margin-top: 0; }
+.sc-hl { display: flex; gap: 14px; padding: 8px 0; border-bottom: 1px dashed #eff2f5; font-size: 0.95rem; line-height: 1.5; }
+.sc-hl-time { flex: 0 0 64px; color: #7e8299; font-variant-numeric: tabular-nums; }
+.sc-hl-text { flex: 1; min-width: 0; color: #3f4254; word-break: break-word; }
+.sc-hl-who { font-weight: 700; color: #181c32; }
+.sc-hl-quote { margin-top: 4px; padding: 6px 10px; border-left: 3px solid #e4e6ef; background: #fafbfc; color: #5e6278; font-style: italic; }
+@media (max-width: 575.98px) { .sc-hl { flex-direction: column; gap: 0; } .sc-hl-time { flex-basis: auto; font-size: 0.8rem; } }
+
+/* Drag and drop onto the gallery; cancel button of an upload */
+.scm-box { position: relative; min-height: 120px; }
+.scm-drop {
+    display: none; position: absolute; inset: 0; z-index: 5; border: 2px dashed #009ef7; border-radius: 0.75rem;
+    background: rgba(241, 250, 255, 0.94); color: #009ef7; font-weight: 700; font-size: 1.05rem; text-align: center;
+    align-items: center; justify-content: center; pointer-events: none;
+}
+.scm-drop i { font-size: 2.2rem; margin-bottom: 8px; color: inherit; }
+.scm-box.is-drag .scm-drop { display: flex; }
+.scm-tools .scm-cancel { color: #f1416c; }
