@@ -15,6 +15,9 @@ var SC = {
     staff : [],                                                // [ { user_id, name } ] that cases can be assigned to
     me : '',                                                   // user_id of the signed-in user
     current : null,                                            // Data of the open case (appstv_case_get)
+    tab : 'overview',                                          // Tab shown in the case window
+    gallery : null,                                            // Photos / videos of the open case (SCMedia)
+    NOTE_TYPES : [ 'note', 'status', 'service', 'close', 'reopen' ],   // Timeline lines shown on the Notes tab (the rest is in History)
     listTimer : null,                                          // Pending list reload (search typing)
     listSeq : 0,                                               // Number of the latest list request (older answers dropped)
     STATUS : { open: 'Open', scheduled: 'Visit scheduled', visited: 'Visited', closed: 'Closed' },
@@ -27,6 +30,10 @@ var SC = {
      */
     init : function () {
         SC.bindEvents();
+        SC.gallery = new SCMedia( $( '#sc_case_media' ), {
+            target : function () { return { case_id: SC.current.case.id }; },
+            onChange : function ( media ) { $( '[data-tab-n="media"]' ).text( media.length ); }
+        } );
         SC.post( { what_do_you_want: 'appstv_case_staff' } ).then( function ( info ) {
             SC.staff = info.data.staff;
             SC.me = info.data.me;
@@ -146,9 +153,16 @@ var SC = {
         $( '#sc_new_case' ).on( 'click', function () { SCW.openNew(); } );
 
         // Case details (rebuilt on every load, so delegated)
-        var $body = $( '#sc_case_body' );
+        var $body = $( '#sc_case_modal' );
+        $body.on( 'click', '[data-sc-tab]', function () { SC.showTab( $( this ).attr( 'data-sc-tab' ) ); } );
+        $body.on( 'hide.bs.modal', function ( e ) {
+            if ( e.target.id === 'sc_case_modal' && SC.gallery.busy() ) {
+                e.preventDefault();
+                SC.showTab( 'media' );
+                Swal.fire( { icon: 'warning', title: 'Photos / videos not uploaded yet', text: 'Upload them (or remove them) before closing the case.', buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary' } } );
+            }
+        } );
         $body.on( 'click', '[data-sc-action]', function () { SC.caseAction( $( this ).attr( 'data-sc-action' ), $( this ) ); } );
-        $body.on( 'change input', '#scd_assigned, #scd_visit_date, #scd_visit_time', function () { $( '#scd_save_visit' ).removeClass( 'd-none' ); } );
         $body.on( 'keydown', '#scd_add_serial', function ( e ) { if ( e.key === 'Enter' ) { e.preventDefault(); SC.caseAction( 'add-tv', $( this ) ); } } );
         $( '#sc_case_modal' ).on( 'hidden.bs.modal', function () {
             SC.current = null;
@@ -264,7 +278,13 @@ var SC = {
      * @returns {void}
      */
     openCase : function ( caseId ) {
+        if ( SC.gallery.busy() && SC.current && SC.current.case.id !== caseId ) {
+            SC.showTab( 'media' );
+            showSimpleToast( 'warning', 'Upload (or remove) the waiting photos / videos first.' );
+            return;
+        }
         SC.post( { what_do_you_want: 'appstv_case_get', case_id: caseId } ).then( function ( info ) {
+            if ( !SC.current || SC.current.case.id !== caseId ) { SC.tab = 'overview'; }
             SC.current = info.data;
             SC.renderCase();
             SC.setUrl( caseId );
@@ -285,119 +305,212 @@ var SC = {
     },
 
     /**
-     * @description Draws the open case
+     * @description Draws the open case: header (number, status, customer, actions), key tiles, tabs
      * @returns {void}
      */
     renderCase : function () {
         var d = SC.current, c = d.case;
         var closed = ( c.status === 'closed' );
-        $( '#sc_case_title' ).html( SC.esc( c.label || 'SC-' + c.id ) + ' <span class="badge ' + SC.STATUS_BADGE[ c.status ] + ' fs-7 align-middle">' + SC.STATUS[ c.status ]
-            + ( closed && c.outcome ? ' · ' + SC.OUTCOME[ c.outcome ] : '' ) + '</span>' );
+        var due = SC.dueInfo( c, d.today );
 
-        var tel = function ( phone ) { return phone ? '<a href="tel:' + SC.esc( phone.replace( /[^0-9+]/g, '' ) ) + '">' + SC.esc( phone ) + '</a>' : ''; };
-        var html = '';
+        // ── Header ──
+        var actions = '<button type="button" class="btn btn-sm btn-light" data-sc-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span class="d-none d-md-inline ms-1">History</span></button>';
+        if ( c.status === 'open' || c.status === 'scheduled' ) { actions += '<button type="button" class="btn btn-sm btn-light-warning" data-sc-action="visited"><i class="fa-solid fa-check"></i><span class="ms-1">Mark as visited</span></button>'; }
+        if ( !closed ) { actions += '<button type="button" class="btn btn-sm btn-success" data-sc-action="close"><i class="fa-solid fa-flag-checkered"></i><span class="ms-1">Close case</span></button>'; }
+        if ( closed || c.status === 'visited' ) { actions += '<button type="button" class="btn btn-sm btn-light-primary" data-sc-action="reopen"><i class="fa-solid fa-rotate-left"></i><span class="ms-1">Reopen</span></button>'; }
+        var context = '';
+        if ( c.kind === 'main' ) { context = d.tv_cases.length + ' TV cases'; }
+        if ( c.kind === 'tv' ) { context = 'TV case ' + c.tv_index + ' of <button type="button" class="btn btn-link p-0 fs-6 align-baseline" data-sc-action="open-case" data-open-id="' + c.parent_case_id + '">SC-' + c.parent_case_id + '</button>'; }
+        $( '#sc_case_head' ).html(
+            '<div class="sc-head-main">'
+            + '<div class="d-flex flex-wrap align-items-center gap-2"><h2 class="sc-head-no mb-0" id="sc_case_label">' + SC.esc( c.label ) + '</h2>'
+            + '<span class="badge ' + SC.STATUS_BADGE[ c.status ] + ' fs-7">' + SC.STATUS[ c.status ] + ( closed && c.outcome ? ' · ' + SC.OUTCOME[ c.outcome ] : '' ) + '</span>'
+            + ( due.badge ? '<span class="badge ' + due.badgeClass + ' fs-7">' + SC.esc( due.badge ) + '</span>' : '' ) + '</div>'
+            + '<div class="sc-head-customer">' + SC.esc( c.customer_name ) + ( context ? '<span class="sc-head-context">' + context + '</span>' : '' ) + '</div>'
+            + '</div>'
+            + '<div class="sc-head-actions">' + actions
+            + '<button type="button" class="btn btn-icon btn-sm btn-active-light-primary ms-1" data-bs-dismiss="modal" aria-label="Close"><i class="fa-solid fa-xmark fs-2"></i></button></div>' );
 
-        // Status actions
-        html += '<div class="d-flex flex-wrap gap-2 mb-5">';
-        if ( c.status === 'open' || c.status === 'scheduled' ) { html += '<button type="button" class="btn btn-sm btn-light-warning" data-sc-action="visited"><i class="fa-solid fa-check"></i> Mark as visited</button>'; }
-        if ( !closed ) { html += '<button type="button" class="btn btn-sm btn-success" data-sc-action="close"><i class="fa-solid fa-flag-checkered"></i> Close case</button>'; }
-        if ( closed || c.status === 'visited' ) { html += '<button type="button" class="btn btn-sm btn-light" data-sc-action="reopen"><i class="fa-solid fa-rotate-left"></i> Reopen</button>'; }
-        html += '</div>';
+        // ── Key tiles ──
+        var tel = function ( phone ) { return phone ? '<a class="sc-tile-link" href="tel:' + SC.esc( phone.replace( /[^0-9+]/g, '' ) ) + '"><i class="fa-solid fa-phone me-1"></i>' + SC.esc( phone ) + '</a>' : ''; };
+        var tiles = '';
+        tiles += SC.tileHtml( 'fa-user', 'Person who complained',
+            '<div id="scd_contact_view"><div class="sc-tile-value">' + ( SC.esc( c.contact_name ) || '—' ) + '</div>'
+            + ( c.contact_position ? '<div class="sc-tile-sub">' + SC.esc( c.contact_position ) + '</div>' : '' )
+            + '<div class="sc-tile-links">' + tel( c.contact_phone ) + ( c.contact_email ? '<a class="sc-tile-link" href="mailto:' + SC.esc( c.contact_email ) + '"><i class="fa-regular fa-envelope me-1"></i>E-mail</a>' : '' ) + '</div></div>'
+            + '<div id="scd_contact_edit" class="d-none">'
+            + '<input type="text" id="scd_contact_name" class="form-control form-control-sm form-control-solid mb-2" maxlength="200" placeholder="Name" value="' + SC.esc( c.contact_name ) + '"/>'
+            + '<input type="tel" id="scd_contact_phone" class="form-control form-control-sm form-control-solid mb-2" maxlength="50" placeholder="Phone" value="' + SC.esc( c.contact_phone ) + '"/>'
+            + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light" data-sc-action="cancel-edit">Cancel</button><button type="button" class="btn btn-sm btn-primary" data-sc-action="save-contact">Save</button></div></div>',
+            closed ? '' : '<button type="button" class="btn btn-link btn-sm p-0" data-sc-action="edit-contact">Edit</button>' );
 
-        html += '<div class="row g-5">';
-
-        // Left: customer, problem, visit, TVs
-        html += '<div class="col-12 col-lg-7">';
-        html += '<div class="sc-section"><div class="sc-section-title">Customer</div>'
-             + '<div class="fw-bold fs-5">' + SC.esc( c.customer_name ) + '</div>'
-             + '<div class="text-muted fs-7">' + [ tel( c.customer_mobile ), SC.esc( c.customer_email ) ].filter( Boolean ).join( ' · ' ) + '</div>'
-             + '<div class="mt-3" id="scd_contact_view"><span class="text-muted">Contact:</span> ' + ( SC.esc( c.contact_name ) || '—' ) + ( c.contact_phone ? ' · ' + tel( c.contact_phone ) : '' )
-             + ( closed ? '' : ' <button type="button" class="btn btn-link btn-sm p-0 ms-2" data-sc-action="edit-contact">Edit</button>' ) + '</div>'
-             + '<div class="row g-2 mt-1 d-none" id="scd_contact_edit">'
-             + '  <div class="col-12 col-md-5"><input type="text" id="scd_contact_name" class="form-control form-control-sm form-control-solid" maxlength="200" placeholder="Contact person" value="' + SC.esc( c.contact_name ) + '"/></div>'
-             + '  <div class="col-8 col-md-4"><input type="tel" id="scd_contact_phone" class="form-control form-control-sm form-control-solid" maxlength="50" placeholder="Phone" value="' + SC.esc( c.contact_phone ) + '"/></div>'
-             + '  <div class="col-4 col-md-3"><button type="button" class="btn btn-sm btn-primary w-100" data-sc-action="save-contact">Save</button></div></div>'
-             + '</div>';
-
-        html += SC.complaintHtml( d );
-
-        html += '<div class="sc-section"><div class="sc-section-title">Problem' + ( closed ? '' : ' <button type="button" class="btn btn-link btn-sm p-0 ms-2" data-sc-action="edit-problem">Edit</button>' ) + '</div>'
-             + '<div id="scd_problem_view" class="sc-pre">' + SC.esc( c.problem ) + '</div>'
-             + '<div id="scd_problem_edit" class="d-none"><textarea id="scd_problem" class="form-control form-control-solid mb-2" rows="3" maxlength="5000">' + SC.esc( c.problem ) + '</textarea>'
-             + '<button type="button" class="btn btn-sm btn-primary" data-sc-action="save-problem">Save</button></div></div>';
-
-        var wizardCase = ( c.staff && c.staff.length > 0 );    // Opened with the wizard: several staff, visit window
-        html += '<div class="sc-section"><div class="sc-section-title">Visit</div>';
-        if ( wizardCase ) {
-            html += '<div class="sc-kv mb-3"><div class="sc-kv-k">Staff</div><div class="sc-kv-v">' + $.map( c.staff, function ( s ) { return SC.esc( s.name || s.user_id ); } ).join( ', ' ) + '</div>'
-                 + '<div class="sc-kv-k">Visit window</div><div class="sc-kv-v">' + SC.esc( SC.showDate( c.visit_from ) ) + ( c.visit_to !== c.visit_from ? ' – ' + SC.esc( SC.showDate( c.visit_to ) ) : '' )
-                 + ( !closed && c.visit_to && c.visit_to < d.today ? ' <span class="badge badge-danger ms-1">Deadline missed</span>' : '' ) + '</div></div>';
+        var visit = '<div id="scd_visit_view">';
+        if ( c.visit_to ) {
+            visit += '<div class="sc-tile-value">' + SC.esc( SC.showDate( c.visit_from ) ) + ( c.visit_to !== c.visit_from ? ' – ' + SC.esc( SC.showDate( c.visit_to ) ) : '' ) + '</div>';
         }
-        html += '<div class="row g-3 align-items-end">'
-             + ( wizardCase ? '<input type="hidden" id="scd_assigned" value="' + SC.esc( c.assigned_user_id ) + '"/>'
-                            : '<div class="col-12 col-md-5"><label class="form-label fs-7">Assigned to</label><select id="scd_assigned" class="form-select form-select-sm form-select-solid"' + ( closed ? ' disabled' : '' ) + '>' + SC.staffOptions( c.assigned_user_id ) + '</select></div>' )
-             + '<div class="col-7 col-md-4"><label class="form-label fs-7">Date</label><input type="date" id="scd_visit_date" class="form-control form-control-sm form-control-solid" value="' + SC.esc( c.visit_date ) + '"' + ( closed ? ' disabled' : '' ) + '/></div>'
-             + '<div class="col-5 col-md-3"><label class="form-label fs-7">Time</label><input type="time" id="scd_visit_time" class="form-control form-control-sm form-control-solid" value="' + SC.esc( c.visit_time ) + '"' + ( closed ? ' disabled' : '' ) + '/></div>'
-             + '<div class="col-12"><button type="button" class="btn btn-sm btn-primary d-none" id="scd_save_visit" data-sc-action="save-visit">Save visit</button></div>'
-             + '</div></div>';
+        visit += ( due.text ? '<div class="sc-tile-sub ' + due.textClass + '">' + SC.esc( due.text ) + '</div>' : '' )
+              + ( c.visit_date ? '<div class="sc-tile-sub"><i class="fa-regular fa-calendar-check me-1"></i>Planned: ' + SC.esc( SC.showDate( c.visit_date ) ) + ( c.visit_time ? ' ' + SC.esc( c.visit_time ) : '' ) + '</div>' : '' )
+              + ( !c.visit_to && !c.visit_date ? '<div class="sc-tile-value text-muted">Not planned</div>' : '' ) + '</div>'
+              + '<div id="scd_visit_edit" class="d-none"><div class="d-flex gap-2 mb-2">'
+              + '<input type="date" id="scd_visit_date" class="form-control form-control-sm form-control-solid" value="' + SC.esc( c.visit_date ) + '" aria-label="Visit date"/>'
+              + '<input type="time" id="scd_visit_time" class="form-control form-control-sm form-control-solid sc-time" value="' + SC.esc( c.visit_time ) + '" aria-label="Visit time"/></div>'
+              + '<input type="hidden" id="scd_assigned" value="' + SC.esc( c.assigned_user_id ) + '"/>'
+              + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light" data-sc-action="cancel-edit">Cancel</button><button type="button" class="btn btn-sm btn-primary" data-sc-action="save-visit">Save</button></div></div>';
+        tiles += SC.tileHtml( 'fa-calendar-days', 'Visit', visit, closed ? '' : '<button type="button" class="btn btn-link btn-sm p-0" data-sc-action="edit-visit">' + ( c.visit_date ? 'Change date' : 'Plan the visit' ) + '</button>', due.tileClass );
 
-        html += SC.tvCasesHtml( d );
-        if ( c.kind !== 'main' || d.tvs.length ) {                // A main case's TVs are on its TV cases
-        html += '<div class="sc-section"><div class="sc-section-title">TVs</div>';
-        if ( d.tvs.length === 0 ) { html += '<div class="text-muted fs-7 mb-3">No TV on this case yet.</div>'; }
-        $.each( d.tvs, function ( i, tv ) { html += SC.tvHtml( tv, c, closed ); } );
-        if ( !closed ) {
-            html += '<div class="input-group input-group-sm mt-3"><input type="text" id="scd_add_serial" class="form-control form-control-solid font-monospace" placeholder="Add a TV: serial number" autocomplete="off" autocapitalize="characters"/>'
-                 + '<button type="button" class="btn btn-light-primary" data-sc-action="add-tv">Add</button>'
-                 + '<button type="button" class="btn btn-primary" data-sc-action="scan-tv"><i class="fa-solid fa-camera"></i></button></div>';
-        }
-        html += '</div>';
-        }
-        html += '</div>';
+        var staff = ( c.staff && c.staff.length ) ? c.staff.map( function ( s ) { return s.name || s.user_id; } ) : ( SC.staffName( c.assigned_user_id ) ? [ SC.staffName( c.assigned_user_id ) ] : [] );
+        tiles += SC.tileHtml( 'fa-user-gear', 'Assigned to', staff.length ? '<div class="sc-tile-value">' + SC.esc( staff.join( ', ' ) ) + '</div>' : '<div class="sc-tile-value text-muted">Nobody yet</div>', '' );
 
-        // Right: timeline
-        html += '<div class="col-12 col-lg-5"><div class="sc-section"><div class="sc-section-title">Notes and history</div>'
-             + '<textarea id="scd_note" class="form-control form-control-solid mb-2" rows="2" maxlength="5000" placeholder="Add a note (call log, findings, parts needed…)"></textarea>'
-             + '<button type="button" class="btn btn-sm btn-light-primary mb-4" data-sc-action="add-note">Add note</button>'
-             + '<div class="sc-timeline">';
-        var icons = { created: 'fa-folder-plus', note: 'fa-comment', status: 'fa-check', assign: 'fa-user', visit: 'fa-calendar', tv: 'fa-tv', service: 'fa-screwdriver-wrench', close: 'fa-flag-checkered', reopen: 'fa-rotate-left' };
-        $.each( d.notes, function ( i, n ) {
-            html += '<div class="sc-tl-item sc-tl-' + SC.esc( n.type ) + '"><div class="sc-tl-icon"><i class="fa-solid ' + ( icons[ n.type ] || 'fa-circle' ) + '"></i></div>'
-                 + '<div class="sc-tl-body"><div class="sc-pre">' + SC.esc( n.note ) + '</div><div class="text-muted fs-8">' + SC.esc( n.by || 'Someone' ) + ' · ' + SC.esc( SC.showStamp( n.on ) ) + '</div></div></div>';
+        var tvsText = c.kind === 'tv' ? 'This TV' : c.tv_count + ' TV' + ( c.tv_count > 1 ? 's' : '' );
+        tiles += SC.tileHtml( 'fa-shield-halved', 'Warranty',
+            '<div class="sc-tile-value">' + SC.esc( SCW.WARRANTY[ c.warranty_status ] || 'Not known' ) + '</div>'
+            + '<div class="sc-tile-sub">' + SC.esc( tvsText ) + ( c.models.length ? ' · ' + SC.esc( SC.modelsShort( c.models ) ) : '' ) + '</div>', '' );
+        $( '#sc_case_tiles' ).html( tiles );
+
+        // ── Tabs ──
+        var tvCount = c.kind === 'main' ? d.tv_cases.length : d.tvs.length;
+        var notes = d.notes.filter( function ( n ) { return SC.NOTE_TYPES.indexOf( n.type ) !== -1; } );
+        var tabs = [ [ 'overview', 'Overview', null ], [ 'tvs', 'TVs', tvCount ], [ 'media', 'Photos & videos', d.media.length ], [ 'notes', 'Notes', notes.length ] ];
+        $( '#sc_case_tabs' ).html( $.map( tabs, function ( t ) {
+            return '<button type="button" class="sc-tab' + ( SC.tab === t[ 0 ] ? ' is-active' : '' ) + '" role="tab" aria-selected="' + ( SC.tab === t[ 0 ] ) + '" data-sc-tab="' + t[ 0 ] + '">'
+                 + SC.esc( t[ 1 ] ) + ( t[ 2 ] !== null ? '<span class="sc-tab-n" data-tab-n="' + t[ 0 ] + '">' + t[ 2 ] + '</span>' : '' ) + '</button>';
+        } ).join( '' ) );
+        SC.showTab( SC.tab );
+
+        // Overview: problem, complaint, customer
+        var chips = c.problem_types.length ? '<div class="sc-tags mb-3">' + $.map( c.problem_types, function ( p ) { return '<span class="sc-problem-chip">' + SC.esc( SCW.PROBLEMS[ p ] || p ) + '</span>'; } ).join( '' ) + '</div>' : '';
+        var overview = '<div class="sc-card-box"><div class="sc-box-head"><div class="sc-box-title">Problem</div>' + ( closed ? '' : '<button type="button" class="btn btn-link btn-sm p-0" data-sc-action="edit-problem">Edit</button>' ) + '</div>'
+            + chips + '<div id="scd_problem_view" class="sc-problem-text sc-pre">' + SC.esc( c.problem ) + '</div>'
+            + '<div id="scd_problem_edit" class="d-none"><textarea id="scd_problem" class="form-control form-control-solid mb-2" rows="4" maxlength="5000">' + SC.esc( c.problem ) + '</textarea>'
+            + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light" data-sc-action="cancel-edit">Cancel</button><button type="button" class="btn btn-sm btn-primary" data-sc-action="save-problem">Save</button></div></div></div>';
+        var facts = [];
+        if ( c.complained_on ) {
+            facts.push( [ 'Complained', SC.esc( SC.showDate( c.complained_on.substr( 0, 10 ) ) + ' ' + c.complained_on.substr( 11, 5 ) + ' SGT' )
+                + ( c.channels.length ? ' · by ' + SC.esc( $.map( c.channels, function ( ch ) { return SCW.CHANNELS[ ch ] || ch; } ).join( ', ' ) ) : '' ) ] );
+        }
+        facts.push( [ 'Customer', SC.esc( c.customer_name ) + ( c.customer_mobile ? ' · ' + tel( c.customer_mobile ) : '' ) + ( c.customer_email ? ' · <a href="mailto:' + SC.esc( c.customer_email ) + '">' + SC.esc( c.customer_email ) + '</a>' : '' ) ] );
+        if ( c.models.length ) { facts.push( [ 'TV models', SC.esc( $.map( c.models, function ( m ) { return m.name; } ).join( ', ' ) ) ] ); }
+        facts.push( [ 'Opened', SC.esc( ( c.created_by || '—' ) + ', ' + SC.showStamp( c.created_on ) ) ] );
+        if ( closed ) { facts.push( [ 'Closed', SC.esc( ( c.closed_by || '—' ) + ', ' + SC.showStamp( c.closed_on ) ) ] ); }
+        overview += '<div class="sc-card-box"><div class="sc-box-head"><div class="sc-box-title">Details</div></div><div class="sc-facts">'
+            + $.map( facts, function ( f ) { return '<div class="sc-fact-k">' + f[ 0 ] + '</div><div class="sc-fact-v">' + f[ 1 ] + '</div>'; } ).join( '' ) + '</div></div>';
+        $( '#sc_pane_overview' ).html( overview );
+
+        // TVs
+        var tvsHtml = SC.tvCasesHtml( d );
+        if ( c.kind !== 'main' ) {
+            tvsHtml += '<div class="sc-card-box"><div class="sc-box-head"><div class="sc-box-title">' + ( c.kind === 'tv' ? 'This TV' : 'TVs on this case' ) + '</div></div>';
+            if ( d.tvs.length === 0 ) { tvsHtml += '<div class="text-muted mb-3">' + ( c.kind === 'tv' ? 'Serial number pending: scan it on site.' : 'No TV on this case yet.' ) + '</div>'; }
+            $.each( d.tvs, function ( i, tv ) { tvsHtml += SC.tvHtml( tv, c, closed ); } );
+            if ( !closed ) {
+                tvsHtml += '<div class="input-group mt-3 sc-add-tv"><input type="text" id="scd_add_serial" class="form-control form-control-solid font-monospace" placeholder="Add a TV: serial number" autocomplete="off" autocapitalize="characters" aria-label="Serial number"/>'
+                         + '<button type="button" class="btn btn-light-primary" data-sc-action="add-tv">Add</button>'
+                         + '<button type="button" class="btn btn-primary" data-sc-action="scan-tv" aria-label="Scan"><i class="fa-solid fa-camera"></i></button></div>';
+            }
+            tvsHtml += '</div>';
+        }
+        $( '#sc_pane_tvs' ).html( tvsHtml );
+
+        // Photos & videos (persistent pane; the gallery is reset only when another case is shown)
+        if ( SC.gallery.caseId !== c.id ) {
+            SC.gallery.caseId = c.id;
+            SC.gallery.queue = [];
+            SC.gallery.drawQueue();
+        }
+        SC.gallery.options.editable = !closed;
+        SC.gallery.$box.find( '.scm-add' ).toggleClass( 'd-none', closed );
+        SC.gallery.setMedia( d.media );
+
+        // Notes
+        var icons = { note: 'fa-comment', status: 'fa-check', service: 'fa-screwdriver-wrench', close: 'fa-flag-checkered', reopen: 'fa-rotate-left' };
+        var notesHtml = '<div class="sc-card-box"><textarea id="scd_note" class="form-control form-control-solid mb-2" rows="2" maxlength="5000" placeholder="Add a note: call log, findings, parts needed…" aria-label="Note"></textarea>'
+            + '<div class="text-end"><button type="button" class="btn btn-sm btn-primary" data-sc-action="add-note">Add note</button></div></div>';
+        if ( notes.length === 0 ) { notesHtml += '<div class="text-muted text-center py-6">No notes yet.</div>'; }
+        notesHtml += '<div class="sc-timeline">';
+        $.each( notes, function ( i, n ) {
+            notesHtml += '<div class="sc-tl-item sc-tl-' + SC.esc( n.type ) + '"><div class="sc-tl-icon"><i class="fa-solid ' + ( icons[ n.type ] || 'fa-circle' ) + '"></i></div>'
+                + '<div class="sc-tl-body"><div class="sc-pre">' + SC.esc( n.note ) + '</div><div class="text-muted fs-8 mt-1">' + SC.esc( n.by || 'Someone' ) + ' · ' + SC.esc( SC.showStamp( n.on ) ) + '</div></div></div>';
         } );
-        html += '</div></div>'
-             + '<div class="sc-section"><div class="sc-section-title">Change history</div><div class="sc-history">' + SCH.listHtml( d.history ) + '</div></div>'
-             + '<div class="text-muted fs-8">Opened by ' + SC.esc( c.created_by || '—' ) + ' on ' + SC.esc( SC.showStamp( c.created_on ) )
-             + ( closed ? '<br/>Closed by ' + SC.esc( c.closed_by || '—' ) + ' on ' + SC.esc( SC.showStamp( c.closed_on ) ) : '' ) + '</div>'
-             + '</div>';
-
-        html += '</div>';
-        $( '#sc_case_body' ).html( html );
+        $( '#sc_pane_notes' ).html( notesHtml + '</div>' );
     },
 
     /**
-     * @description HTML of the complaint details of a wizard case (complainant, when / how, TVs, models, warranty, problems)
-     * @param {object} d - Data of appstv_case_get
-     * @returns {string} '' for older cases
+     * @description HTML of one key tile
+     * @param {string} icon - Font Awesome icon (fa-...)
+     * @param {string} title - Small title
+     * @param {string} body - Inner HTML
+     * @param {string} action - Link / button HTML next to the title ('' = none)
+     * @param {string} [extraClass] - is-danger / is-warning / is-ok
+     * @returns {string}
      */
-    complaintHtml : function ( d ) {
-        var c = d.case;
-        if ( !c.complained_on ) { return ''; }
-        var tags = function ( values, labels ) {
-            return '<div class="sc-tags">' + $.map( values, function ( v ) { return '<span class="badge badge-light-primary">' + SC.esc( labels[ v ] || v ) + '</span>'; } ).join( '' ) + '</div>';
-        };
-        var rows = [
-            [ 'Complained by', SC.esc( [ c.contact_name, c.contact_position ].filter( Boolean ).join( ', ' ) )
-                + ( c.contact_email ? ' · <a href="mailto:' + SC.esc( c.contact_email ) + '">' + SC.esc( c.contact_email ) + '</a>' : '' ) ],
-            [ 'When / how', SC.esc( SC.showDate( c.complained_on.substr( 0, 10 ) ) + ' ' + c.complained_on.substr( 11, 5 ) + ' SGT' ) + ( c.channels.length ? tags( c.channels, SCW.CHANNELS ) : '' ) ],
-            [ 'TVs', c.kind === 'tv' ? 'This TV (TV case ' + c.tv_index + ')' : c.tv_count + ( c.kind === 'main' ? ' · one case per TV' : ( c.tv_count > 1 ? ' · one case for all' : '' ) ) ],
-            [ 'Models', SC.esc( $.map( c.models, function ( m ) { return m.name; } ).join( ', ' ) ) ],
-            [ 'Warranty', SC.esc( SCW.WARRANTY[ c.warranty_status ] || c.warranty_status ) ],
-            [ 'Problem', c.problem_types.length ? tags( c.problem_types, SCW.PROBLEMS ) : '' ]
-        ];
-        return '<div class="sc-section"><div class="sc-section-title">Complaint</div><div class="sc-kv">'
-             + $.map( rows, function ( r ) { return r[ 1 ] ? '<div class="sc-kv-k">' + r[ 0 ] + '</div><div class="sc-kv-v">' + r[ 1 ] + '</div>' : ''; } ).join( '' )
-             + '</div></div>';
+    tileHtml : function ( icon, title, body, action, extraClass ) {
+        return '<div class="sc-tile ' + ( extraClass || '' ) + '"><div class="sc-tile-head"><span class="sc-tile-title"><i class="fa-solid ' + icon + ' me-2"></i>' + SC.esc( title ) + '</span>' + action + '</div>'
+             + '<div class="sc-tile-body">' + body + '</div></div>';
+    },
+
+    /**
+     * @description Where the case stands against its visit window / planned visit
+     * @param {object} c - The case
+     * @param {string} today - 'YYYY-MM-DD' (Singapore)
+     * @returns {object} badge, badgeClass (header), text, textClass (tile), tileClass
+     */
+    dueInfo : function ( c, today ) {
+        var none = { badge: '', badgeClass: '', text: '', textClass: '', tileClass: '' };
+        if ( c.status === 'closed' || c.status === 'visited' ) { return none; }
+        var days = function ( a, b ) { return Math.round( ( new Date( b + 'T00:00:00Z' ) - new Date( a + 'T00:00:00Z' ) ) / 86400000 ); };
+        var end = c.visit_date || c.visit_to;
+        if ( !end ) { return none; }
+        if ( end < today ) {
+            var late = days( end, today );
+            return { badge: 'Visit deadline missed', badgeClass: 'badge-danger', text: 'Deadline missed ' + late + ' day' + ( late > 1 ? 's' : '' ) + ' ago', textClass: 'text-danger fw-semibold', tileClass: 'is-danger' };
+        }
+        var start = c.visit_date || c.visit_from;
+        if ( start > today ) {
+            var wait = days( today, start );
+            return { badge: '', badgeClass: '', text: 'Starts in ' + wait + ' day' + ( wait > 1 ? 's' : '' ), textClass: 'text-muted', tileClass: '' };
+        }
+        var left = days( today, end );
+        return { badge: left === 0 ? 'Visit due today' : 'In the visit window', badgeClass: 'badge-light-warning', text: left === 0 ? 'Last day today' : left + ' day' + ( left > 1 ? 's' : '' ) + ' left',
+                 textClass: 'text-warning fw-semibold', tileClass: 'is-warning' };
+    },
+
+    /**
+     * @description Short names of the models ("VQ 43", VQ 55"")
+     * @param {Array} models - [ { product_id, name } ]
+     * @returns {string}
+     */
+    modelsShort : function ( models ) {
+        return $.map( models, function ( m ) {
+            if ( m.product_id === 'unsure' ) { return 'model not sure'; }
+            var x = ( SCW.models || [] ).filter( function ( y ) { return y.product_id === m.product_id; } )[ 0 ];
+            return x && x.size ? x.series + ' ' + x.size + '"' : m.name;
+        } ).join( ', ' );
+    },
+
+    /**
+     * @description Shows one tab of the case window
+     * @param {string} tab - overview | tvs | media | notes
+     * @returns {void}
+     */
+    showTab : function ( tab ) {
+        SC.tab = tab;
+        $( '#sc_case_tabs .sc-tab' ).each( function () {
+            var on = $( this ).attr( 'data-sc-tab' ) === tab;
+            $( this ).toggleClass( 'is-active', on ).attr( 'aria-selected', on );
+        } );
+        $( '#sc_case_modal .sc-pane' ).each( function () { $( this ).toggleClass( 'd-none', $( this ).attr( 'data-pane' ) !== tab ); } );
+    },
+
+    /**
+     * @description Shows who changed what and when (the case, its TV cases and the draft it came from)
+     * @returns {void}
+     */
+    showHistory : function () {
+        var c = SC.current.case;
+        SC.post( { what_do_you_want: 'appstv_case_history_get', case_id: c.id } ).then( function ( info ) {
+            Swal.fire( { title: 'History of ' + SC.esc( c.label ), html: '<div class="text-start sc-history sc-history-tall">' + SCH.listHtml( info.data.history ) + '</div>', width: 820,
+                         confirmButtonText: 'Close', buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary' } } );
+        } ).catch( SC.toastError );
     },
 
     /**
@@ -408,15 +521,16 @@ var SC = {
     tvCasesHtml : function ( d ) {
         var c = d.case;
         if ( !d.tv_cases || !d.tv_cases.length ) { return ''; }
-        var html = '<div class="sc-section"><div class="sc-section-title">' + ( c.kind === 'tv' ? 'Main case and TV cases' : 'TV cases' ) + '</div>';
+        var html = '<div class="sc-card-box"><div class="sc-box-head"><div class="sc-box-title">' + ( c.kind === 'tv' ? 'Main case and its TV cases' : 'One case per TV' ) + '</div>'
+                 + '<span class="text-muted fs-7">Open a TV case to scan its serial and record the service</span></div>';
         if ( c.kind === 'tv' ) {
             html += '<button type="button" class="sc-tv-case" data-sc-action="open-case" data-open-id="' + c.parent_case_id + '"><span class="fw-bold">SC-' + c.parent_case_id + '</span><span class="text-muted fs-7">Main case</span></button>';
         }
         $.each( d.tv_cases, function ( i, t ) {
             var current = ( t.id === c.id );
             html += '<button type="button" class="sc-tv-case' + ( current ? ' is-current' : '' ) + '" data-sc-action="open-case" data-open-id="' + t.id + '"' + ( current ? ' disabled' : '' ) + '>'
-                 + '<span><span class="fw-bold">' + SC.esc( t.label ) + '</span> <span class="font-monospace text-muted fs-7 ms-2">' + SC.esc( t.serials || 'Serial pending' ) + '</span></span>'
-                 + '<span class="d-flex gap-1"><span class="badge badge-light">' + SC.esc( SCW.WARRANTY[ t.warranty_status ] || t.warranty_status ) + '</span>'
+                 + '<span class="d-flex align-items-center gap-3"><span class="fw-bold">' + SC.esc( t.label ) + '</span><span class="font-monospace text-muted fs-7">' + SC.esc( t.serials || 'Serial pending' ) + '</span></span>'
+                 + '<span class="d-flex gap-1 flex-wrap justify-content-end"><span class="badge badge-light">' + SC.esc( SCW.WARRANTY[ t.warranty_status ] || t.warranty_status ) + '</span>'
                  + '<span class="badge ' + SC.STATUS_BADGE[ t.status ] + '">' + SC.STATUS[ t.status ] + '</span></span></button>';
         } );
         return html + '</div>';
@@ -495,9 +609,12 @@ var SC = {
         var tv = SC.current.tvs[ +$el.attr( 'data-tv-index' ) ];
 
         if ( action === 'open-case' ) { SC.openCase( +$el.attr( 'data-open-id' ) ); return; }
-        if ( action === 'edit-contact' ) { $( '#scd_contact_view' ).addClass( 'd-none' ); $( '#scd_contact_edit' ).removeClass( 'd-none' ); }
+        if ( action === 'history' ) { SC.showHistory(); return; }
+        if ( action === 'cancel-edit' ) { SC.renderCase(); return; }
+        if ( action === 'edit-visit' ) { $( '#scd_visit_view' ).addClass( 'd-none' ); $( '#scd_visit_edit' ).removeClass( 'd-none' ); $el.addClass( 'd-none' ); }
+        if ( action === 'edit-contact' ) { $( '#scd_contact_view' ).addClass( 'd-none' ); $( '#scd_contact_edit' ).removeClass( 'd-none' ); $el.addClass( 'd-none' ); }
         if ( action === 'save-contact' ) { update( { contact_name: $( '#scd_contact_name' ).val(), contact_phone: $( '#scd_contact_phone' ).val() } ).catch( function () {} ); }
-        if ( action === 'edit-problem' ) { $( '#scd_problem_view' ).addClass( 'd-none' ); $( '#scd_problem_edit' ).removeClass( 'd-none' ); }
+        if ( action === 'edit-problem' ) { $( '#scd_problem_view' ).addClass( 'd-none' ); $( '#scd_problem_edit' ).removeClass( 'd-none' ); $el.addClass( 'd-none' ); }
         if ( action === 'save-problem' ) { update( { problem: $( '#scd_problem' ).val() } ).catch( function () {} ); }
         if ( action === 'save-visit' ) {
             if ( !$( '#scd_visit_date' ).val() ) { $( '#scd_visit_time' ).val( '' ); }
@@ -505,7 +622,7 @@ var SC = {
         }
         if ( action === 'visited' ) { update( { status: 'visited' } ).catch( function () {} ); }
         if ( action === 'reopen' ) {
-            showConfirmSweetAlert( 'Reopen SC-' + c.id + '?', 'The case becomes active again.', 'question', 'Reopen', 'btn btn-primary', 'Cancel', 'btn btn-light',
+            showConfirmSweetAlert( 'Reopen ' + SC.esc( c.label ) + '?', 'The case becomes active again.', 'question', 'Reopen', 'btn btn-primary', 'Cancel', 'btn btn-light',
                 function () { update( { status: 'open' } ).catch( function () {} ); } );
         }
         if ( action === 'close' ) { SC.closeCase(); }
@@ -576,7 +693,7 @@ var SC = {
             + '<div class="form-text mb-4">Repaired / Replaced: record the service on the TV first (Record service).</div>'
             + '<label class="form-label">Closing note</label><textarea id="scc_note" class="form-control form-control-solid" rows="2" maxlength="5000"></textarea></div>';
         Swal.fire( {
-            title : 'Close SC-' + c.id,
+            title : 'Close ' + SC.esc( c.label ),
             html : html,
             showCancelButton : true,
             confirmButtonText : 'Close case',

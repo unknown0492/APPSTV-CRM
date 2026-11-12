@@ -213,6 +213,7 @@ FROM (
     UNION SELECT 'appstv_case_history_get', 'Service Cases - history', 'Reads who changed what and when on a case', 'READ'
     UNION SELECT 'appstv_case_media_upload', 'Service Cases - upload photo / video', 'Uploads photos and videos to a case or draft, in pieces', 'CREATE'
     UNION SELECT 'appstv_case_media_delete', 'Service Cases - remove photo / video', 'Removes a photo or video of a case or draft', 'DELETE'
+    UNION SELECT 'appstv_case_media_file', 'Service Cases - view photo / video', 'Shows a photo or video of a case or draft', 'READ'
     UNION SELECT 'appstv_case_tv_case_add', 'Service Cases - add TV case', 'Adds TV cases to a main case', 'UPDATE'
     UNION SELECT 'appstv_case_tv_case_remove', 'Service Cases - remove TV case', 'Removes a TV case from a main case', 'UPDATE'
 ) n
@@ -228,6 +229,12 @@ FROM ( SELECT rf.role_id
 JOIN functionalities f ON f.functionality_name IN ( 'appstv_case_customer_search', 'appstv_case_customer_add', 'appstv_case_contacts',
                                                     'appstv_case_models', 'appstv_case_draft_list', 'appstv_case_draft_get',
                                                     'appstv_case_draft_save', 'appstv_case_draft_delete', 'appstv_case_history_get',
-                                                    'appstv_case_media_upload', 'appstv_case_media_delete',
+                                                    'appstv_case_media_upload', 'appstv_case_media_delete', 'appstv_case_media_file',
                                                     'appstv_case_tv_case_add', 'appstv_case_tv_case_remove' )
 WHERE NOT EXISTS ( SELECT 1 FROM roles_functionalities x WHERE x.role_id = owners.role_id AND x.functionality_id = f.functionality_id );
+
+-- 1.0.22: thumbnail / video poster of a photo or video
+SET @has_col = ( SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = 'service_case_media' AND column_name = 'thumb_file' );
+SET @sql = IF( @has_col = 0, 'ALTER TABLE service_case_media ADD COLUMN thumb_file VARCHAR(200) NOT NULL DEFAULT '''' COMMENT ''Thumbnail (photo) or poster frame (video)'' AFTER source_file', 'SELECT 1' );
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

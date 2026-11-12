@@ -336,6 +336,7 @@ function appstv_case_draft_get(){
         $row = appstv_case_draft_read( request( 'draft_id' ) );
         $item = appstv_case_draft_item( $row );
         $item[ 'history' ] = appstv_case_history_list( "h.draft_id = " . (int) $row[ 'id' ] . " AND h.case_id IS NULL" );
+        $item[ 'media' ] = appstv_media_list( "m.draft_id = " . (int) $row[ 'id' ] . " AND m.case_id IS NULL" );
         return array( "Draft.", array( 'draft' => $item ) );
     } );
 }
@@ -353,6 +354,11 @@ function appstv_case_draft_delete(){
         $now = create_iso_8601_datetime();
         appstv_case_db( "UPDATE service_case_drafts SET status = 'deleted', deleted_by = '$e_user', deleted_on = '$now', revision = revision + 1 WHERE id = $id" );
         appstv_case_history( null, $id, 'draft_deleted', '', null, null, "Draft deleted" );
+        // Its photos and videos go with it (files deleted, rows kept as removed)
+        foreach( appstv_case_rows( "SELECT * FROM service_case_media WHERE draft_id = $id AND case_id IS NULL AND deleted_on = ''" ) as $media ){
+            appstv_case_db( "UPDATE service_case_media SET deleted_by = '$e_user', deleted_on = '$now' WHERE id = " . (int) $media[ 'id' ] );
+            appstv_media_unlink( $media );
+        }
         return array( "Draft deleted.", array( 'draft_id' => $id ) );
     } );
 }

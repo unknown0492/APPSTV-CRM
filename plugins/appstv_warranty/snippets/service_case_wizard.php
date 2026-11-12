@@ -2,7 +2,7 @@
 /*
  * "Open a service case" wizard (v1.0.21) - markup only; behaviour in js/service_case_wizard.js (SCW).
  * Included by pages/service_cases.php. Steps: 1 Customer and complainant, 2 TVs, 3 Problem, 6 Who and when
- * (4 Serial numbers and 5 Photos / videos follow in later versions).
+ * 5 Photos and videos (1.0.22); 4 Serial numbers follows in a later version.
  */
 ?>
 <div class="modal fade" id="scw_modal" tabindex="-1" data-bs-focus="false" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="scw_title">
@@ -143,6 +143,14 @@
                     <div class="scw-block">
                         <label class="scw-block-title required d-block" for="scw_problem">In their own words</label>
                         <textarea id="scw_problem" class="form-control form-control-solid" rows="5" maxlength="5000" placeholder="What the customer told us" data-scw-field="problem"></textarea>
+                    </div>
+                </div>
+
+                <!-- STEP 5: photos and videos the customer shared (optional) -->
+                <div class="scw-step d-none" data-step="5">
+                    <div class="scw-block">
+                        <div class="scw-block-title">Photos and videos <span class="text-muted fw-normal fs-7">(optional, e.g. what the customer sent on WhatsApp)</span></div>
+                        <div id="scw_media"></div>
                     </div>
                 </div>
 

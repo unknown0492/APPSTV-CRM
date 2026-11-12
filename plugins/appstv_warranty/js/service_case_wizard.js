@@ -19,6 +19,7 @@ var SCW = {
         { id: 1, title: 'Customer' },
         { id: 2, title: 'TVs' },
         { id: 3, title: 'Problem' },
+        { id: 5, title: 'Photos' },
         { id: 6, title: 'Who and when' }
     ],
     AUTOSAVE_MS : 2500,                                        // Save this long after the last change
@@ -41,6 +42,7 @@ var SCW = {
     searchTimer : null,                                        // Pending customer search
     contactsTimer : null,                                      // Pending complainant search
     opening : false,                                           // OPEN CASE in progress
+    gallery : null,                                            // Photos / videos of the draft (SCMedia)
 
     // ── Start ───────────────────────────────────────────────
 
@@ -51,6 +53,18 @@ var SCW = {
     init : function () {
         SCW.bindEvents();
         SCW.loadDrafts();
+        // Uploads go to the draft: it is saved first when it has no number yet
+        SCW.gallery = new SCMedia( $( '#scw_media' ), {
+            target : function () {
+                if ( SCW.draftId ) { return { draft_id: SCW.draftId }; }
+                SCW.dirty = true;
+                return SCW.saveNow().then( function () {
+                    if ( !SCW.draftId ) { throw 'Choose the customer first, so the draft can be saved.'; }
+                    return { draft_id: SCW.draftId };
+                } );
+            },
+            onChange : function () { SCW.renderSummary(); }
+        } );
         SCW.loadModels().catch( function () { /* Loaded again when the wizard opens */ } );   // Model names for the history lines
     },
 
@@ -115,7 +129,7 @@ var SCW = {
         SC.post( { what_do_you_want: 'appstv_case_draft_get', draft_id: draftId } ).then( function ( info ) {
             var d = info.data.draft;
             if ( backup && backup.draftId === d.draft_id && backup.revision === d.revision ) {
-                SCW.show( d.draft_id, d.revision, backup.answers, backup.stepIndex );
+                SCW.show( d.draft_id, d.revision, backup.answers, backup.stepIndex, d.media );
                 SCW.markDirty();
                 return;
             }
@@ -123,7 +137,7 @@ var SCW = {
                 showSimpleToast( 'info', 'Someone changed this draft after your unsaved changes; their version is shown.' );
             }
             SCW.clearBackupOf( d.draft_id );
-            SCW.show( d.draft_id, d.revision, d.answers, SCW.indexOfStep( d.step ) );
+            SCW.show( d.draft_id, d.revision, d.answers, SCW.indexOfStep( d.step ), d.media );
             SCW.setSavedText( 'Draft by ' + ( d.created_by || 'someone' ) + ' · last saved ' + SC.showStamp( d.updated_on ) + ( d.updated_by ? ' by ' + d.updated_by : '' ) );
         } ).catch( function ( message ) {
             SCW.clearBackupOf( draftId );
@@ -138,15 +152,19 @@ var SCW = {
      * @param {number} revision - Its revision
      * @param {object} answers - Answers
      * @param {number} stepIndex - Step to show
+     * @param {Array} [media] - Photos / videos of the draft
      * @returns {void}
      */
-    show : function ( draftId, revision, answers, stepIndex ) {
+    show : function ( draftId, revision, answers, stepIndex, media ) {
         SCW.draftId = draftId;
         SCW.revision = revision;
         SCW.answers = $.extend( true, SCW.emptyAnswers(), answers );
         SCW.dirty = false;
         SCW.opening = false;
         SCW.setSavedText( draftId ? '' : 'Not saved yet' );
+        SCW.gallery.queue = [];
+        SCW.gallery.drawQueue();
+        SCW.gallery.setMedia( media || [] );
         SCW.loadModels().then( function () {
             SCW.renderAll();
             SCW.goTo( Math.max( 0, Math.min( SCW.STEPS.length - 1, stepIndex || 0 ) ), false );
@@ -442,7 +460,8 @@ var SCW = {
             [ 'TVs', a.tv_count + ( a.tv_count > 1 ? ( a.split ? ' · one case per TV' : ' · one case for all' ) : '' ) + ( a.serials.length ? ' · ' + a.serials.length + ' serial number(s)' : '' ) ],
             [ 'Models', models ],
             [ 'Warranty', SCW.WARRANTY[ a.warranty ] || '' ],
-            [ 'Problem', list( a.problem_types, SCW.PROBLEMS ) + ( a.problem_types.length && a.problem ? ' · ' : '' ) + a.problem ]
+            [ 'Problem', list( a.problem_types, SCW.PROBLEMS ) + ( a.problem_types.length && a.problem ? ' · ' : '' ) + a.problem ],
+            [ 'Photos / videos', SCW.gallery.count() ? String( SCW.gallery.count() ) : 'None' ]
         ];
         $( '#scw_summary' ).html( $.map( rows, function ( r ) {
             return '<div class="scw-sum-row"><div class="scw-sum-k">' + SC.esc( r[ 0 ] ) + '</div><div class="scw-sum-v">' + ( r[ 1 ] ? SC.esc( r[ 1 ] ) : '<span class="text-danger">Missing</span>' ) + '</div></div>';
@@ -754,6 +773,11 @@ var SCW = {
      * @returns {void}
      */
     saveAndClose : function ( asked ) {
+        if ( SCW.gallery.busy() ) {
+            Swal.fire( { icon: 'warning', title: 'Photos / videos not uploaded yet', text: 'Upload them (or remove them) on the Photos step before closing.', buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary' } } );
+            SCW.goTo( SCW.indexOfStep( 5 ), false );
+            return;
+        }
         var close = function () {
             bootstrap.Modal.getOrCreateInstance( document.getElementById( 'scw_modal' ) ).hide();
             SCW.answers = null;
@@ -833,6 +857,11 @@ var SCW = {
      */
     openCase : function () {
         if ( !SCW.checkStep( true ) || SCW.opening ) { return; }
+        if ( SCW.gallery.busy() ) {
+            Swal.fire( { icon: 'warning', title: 'Photos / videos not uploaded yet', text: 'Upload them (or remove them) first.', buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary' } } );
+            SCW.goTo( SCW.indexOfStep( 5 ), false );
+            return;
+        }
         var $btn = $( '#scw_open' );
         var send = function () {
             SCW.opening = true;
@@ -886,7 +915,7 @@ var SCW = {
                      + ( d.problem ? '<div class="text-muted fs-7 sc-draft-problem">' + SC.esc( d.problem ) + '</div>' : '' )
                      + '<div class="text-muted fs-8 mt-1">Started by ' + SC.esc( d.created_by || '—' ) + ' · ' + SC.esc( SC.showStamp( d.created_on ) )
                      + ( d.updated_on !== d.created_on ? ' · last change ' + SC.esc( d.updated_by || '—' ) + ', ' + SC.esc( SC.showStamp( d.updated_on ) ) : '' )
-                     + ' · at step “' + SC.esc( step.title ) + '”' + ( d.tv_count > 1 ? ' · ' + d.tv_count + ' TVs' : '' ) + '</div></div>'
+                     + ' · at step “' + SC.esc( step.title ) + '”' + ( d.tv_count > 1 ? ' · ' + d.tv_count + ' TVs' : '' ) + ( d.media ? ' · ' + d.media + ' photo(s) / video(s)' : '' ) + '</div></div>'
                      + '<div class="sc-draft-actions">'
                      + '<button type="button" class="btn btn-sm btn-icon btn-light" data-draft-history="' + d.draft_id + '" title="History" aria-label="History"><i class="fa-solid fa-clock-rotate-left"></i></button>'
                      + '<button type="button" class="btn btn-sm btn-icon btn-light-danger" data-draft-delete="' + d.draft_id + '" data-label="' + SC.esc( d.label ) + '" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can"></i></button>'

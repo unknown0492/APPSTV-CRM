@@ -620,6 +620,8 @@ function appstv_case_get(){
             ),
             'tvs' => $tvs,
             'tv_cases' => $tv_cases,
+            // Photos / videos: the case's own; a TV case also shows its main case's
+            'media' => appstv_media_list( "m.case_id = $id" . ( $case[ 'case_kind' ] === 'tv' ? " OR m.case_id = " . (int) $case[ 'parent_case_id' ] : "" ) ),
             'history' => appstv_case_history_list( $history_where ),
             'notes' => $notes,
             'today' => appstv_case_today()
