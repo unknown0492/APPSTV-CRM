@@ -408,3 +408,15 @@
 .scm-drop i { font-size: 2.2rem; margin-bottom: 8px; color: inherit; }
 .scm-box.is-drag .scm-drop { display: flex; }
 .scm-tools .scm-cancel { color: #f1416c; }
+
+/* v1.0.25: on phones the 4 tabs sit in 2 rows (2 x 2) with their full names; the selected one is white with a
+   blue border and top line, the others grey; the panel below keeps all its rounded corners */
+@media (max-width: 575.98px) {
+    .sc-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0; margin-bottom: 12px; border-bottom: 0; overflow: visible; }
+    .sc-tab {
+        justify-content: center; margin: 0; padding: 11px 8px; border: 1px solid #e1e4ec; border-radius: 0.65rem;
+        white-space: normal; text-align: center; line-height: 1.25;
+    }
+    .sc-tab.is-active { top: 0; padding-top: 11px; border-color: #009ef7; box-shadow: inset 0 3px 0 #009ef7; }
+    .sc-pane { border-top: 1px solid #dbdfe9; border-radius: 0.75rem; padding: 16px; }
+}
