@@ -65,6 +65,8 @@ function appstv_case_today(){
  */
 function appstv_case_user_id(){
     global $globalAccessToken;
+    // No token = the system (scheduled jobs on the command line)
+    if( !is_string( $globalAccessToken ) || $globalAccessToken === '' ){ return ''; }
     $payload = getJWTPayload( $globalAccessToken );
     return isset( $payload[ 'user_id' ] ) ? (string) $payload[ 'user_id' ] : '';
 }
@@ -231,6 +233,70 @@ function appstv_case_log( $case_id, $type, $text ){
     $now = create_iso_8601_datetime();
     appstv_case_db( "INSERT INTO service_case_notes ( case_id, user_id, note_type, note, created_on ) VALUES ( $case_id, '$e_user', '$e_type', '$e_text', '$now' )" );
     appstv_case_db( "UPDATE service_cases SET updated_on = '$now' WHERE id = $case_id" );
+}
+
+/**
+ * @description Writes one line of the change history of a case or draft (service_case_history, 1.0.19)
+ * @param {int|null} $case_id - service_cases.id, null for a draft
+ * @param {int|null} $draft_id - service_case_drafts.id, null when not a draft change
+ * @param {string} $action - draft_created | draft_saved | draft_deleted | opened | changed | staff_added | ...
+ * @param {string} $field - Field changed ('' when not a field change)
+ * @param {mixed} $old_value - Value before (array = JSON, null = none)
+ * @param {mixed} $new_value - Value after (array = JSON, null = none)
+ * @param {string} $detail - Readable line (e.g. the reason of a removal)
+ * @returns {void}
+ */
+function appstv_case_history( $case_id, $draft_id, $action, $field = '', $old_value = null, $new_value = null, $detail = '' ){
+    $as_sql = function( $value ){
+        if( $value === null ){ return "NULL"; }
+        if( is_array( $value ) ){ $value = json_encode( $value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ); }
+        return "'" . escape_string( (string) $value ) . "'";
+    };
+    $sql_case = ( $case_id === null ) ? "NULL" : (int) $case_id;
+    $sql_draft = ( $draft_id === null ) ? "NULL" : (int) $draft_id;
+    $e_user = escape_string( appstv_case_user_id() );
+    $e_action = escape_string( substr( $action, 0, 30 ) );
+    $e_field = escape_string( substr( $field, 0, 50 ) );
+    $e_detail = escape_string( mb_substr( (string) $detail, 0, 500 ) );
+    $now = create_iso_8601_datetime();
+    appstv_case_db( "INSERT INTO service_case_history ( case_id, draft_id, user_id, action, field, old_value, new_value, detail, created_on )
+                     VALUES ( $sql_case, $sql_draft, '$e_user', '$e_action', '$e_field', " . $as_sql( $old_value ) . ", " . $as_sql( $new_value ) . ", '$e_detail', '$now' )" );
+}
+
+/**
+ * @description Writes one 'changed' history line per field that differs between two sets of values
+ * @param {int|null} $case_id - service_cases.id, null for a draft
+ * @param {int|null} $draft_id - service_case_drafts.id, null when not a draft change
+ * @param {array} $before - field => value before
+ * @param {array} $after - field => value after (only these fields are compared)
+ * @returns {int} Number of fields that changed
+ */
+function appstv_case_history_diff( $case_id, $draft_id, $before, $after ){
+    $changed = 0;
+    foreach( $after as $field => $new_value ){
+        $old_value = array_key_exists( $field, $before ) ? $before[ $field ] : null;
+        // Lists compare by content (the order of ticked boxes does not matter)
+        $old_cmp = is_array( $old_value ) ? json_encode( appstv_case_sorted( $old_value ) ) : (string) $old_value;
+        $new_cmp = is_array( $new_value ) ? json_encode( appstv_case_sorted( $new_value ) ) : (string) $new_value;
+        if( $old_cmp === $new_cmp ){ continue; }
+        appstv_case_history( $case_id, $draft_id, 'changed', $field, $old_value, $new_value );
+        $changed++;
+    }
+    return $changed;
+}
+
+/**
+ * @description Sorts a plain list of scalars so two lists with the same items compare equal
+ * @param {array} $value - List or keyed array
+ * @returns {array} The sorted list, or the array as it was
+ */
+function appstv_case_sorted( $value ){
+    if( $value === array() || array_keys( $value ) !== range( 0, count( $value ) - 1 ) ){ return $value; }
+    foreach( $value as $item ){
+        if( !is_scalar( $item ) ){ return $value; }
+    }
+    sort( $value );
+    return $value;
 }
 
 /**
