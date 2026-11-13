@@ -18,7 +18,7 @@ var SC = {
     today : '',                                                // Today in Singapore (from the list), for the card strips
     tab : 'overview',                                          // Tab shown in the case window
     gallery : null,                                            // Photos / videos of the open case (SCMedia)
-    NOTE_TYPES : [ 'note', 'status', 'service', 'close', 'reopen', 'part' ],   // Timeline lines shown on the Notes tab (the rest is in History)
+    NOTE_TYPES : [ 'note', 'status', 'service', 'close', 'reopen', 'part', 'inspect' ],   // Timeline lines shown on the Notes tab (the rest is in History)
     listTimer : null,                                          // Pending list reload (search typing)
     listSeq : 0,                                               // Number of the latest list request (older answers dropped)
     STATUS : { open: 'Open', scheduled: 'Visit scheduled', visited: 'Visited', revisit: 'Needs another visit', closed: 'Closed' },
@@ -483,7 +483,9 @@ var SC = {
             }
             tvsHtml += '</div>';
         }
+        SCI.keepGallery();                                     // 1.0.32: the inspection's photo gallery survives the redraw
         $( '#sc_pane_tvs' ).html( tvsHtml );
+        SCI.mount();
 
         // Photos & videos (persistent pane; the gallery is reset only when another case is shown)
         if ( SC.gallery.caseId !== c.id ) {
@@ -496,7 +498,7 @@ var SC = {
         SC.gallery.setMedia( d.media );
 
         // Notes
-        var icons = { note: 'fa-comment', status: 'fa-check', service: 'fa-screwdriver-wrench', close: 'fa-flag-checkered', reopen: 'fa-rotate-left', part: 'fa-box' };
+        var icons = { note: 'fa-comment', status: 'fa-check', service: 'fa-screwdriver-wrench', close: 'fa-flag-checkered', reopen: 'fa-rotate-left', part: 'fa-box', inspect: 'fa-magnifying-glass' };
         var notesHtml = '<div class="sc-card-box"><textarea id="scd_note" class="form-control form-control-solid mb-2" rows="2" maxlength="5000" placeholder="Add a note: call log, findings, parts needed…" aria-label="Note"></textarea>'
             + '<div class="text-end"><button type="button" class="btn btn-sm btn-primary" data-sc-action="add-note">Add note</button></div></div>';
         if ( notes.length === 0 ) { notesHtml += '<div class="text-muted text-center py-6">No notes yet.</div>'; }
@@ -617,6 +619,7 @@ var SC = {
             html += '<button type="button" class="sc-tv-case' + ( current ? ' is-current' : '' ) + '" data-sc-action="open-case" data-open-id="' + t.id + '"' + ( current ? ' disabled' : '' ) + '>'
                  + '<span class="d-flex align-items-center gap-3"><span class="fw-bold">' + SC.esc( t.label ) + '</span><span class="font-monospace text-muted fs-7">' + SC.esc( t.serials || 'Serial pending' ) + '</span></span>'
                  + '<span class="d-flex gap-1 flex-wrap justify-content-end"><span class="badge badge-light">' + SC.esc( SCW.WARRANTY[ t.warranty_status ] || t.warranty_status ) + '</span>'
+                 + SCI.resultBadge( t.inspect_result )
                  + '<span class="badge ' + SC.STATUS_BADGE[ t.status ] + '">' + SC.STATUS[ t.status ] + '</span></span></button>';
         } );
         return html + '</div>';
@@ -823,10 +826,11 @@ var SC = {
         var html = '<div class="sc-tv">';
         html += '<div class="d-flex flex-wrap align-items-center gap-2"><span class="font-monospace fw-bold fs-5">' + SC.esc( tv.serial_number ) + '</span>';
         if ( ch === null ) {
-            html += '<span class="badge badge-sc-amber">Not in the system</span></div>';
+            html += '<span class="badge badge-sc-amber">Not in the system</span>' + SCI.badge( SCI.of( tv.id ) ) + '</div>';
         } else {
             html += '<span class="badge ' + SC.warrantyBadge( ch.warranty_status ) + '">' + SC.esc( ch.warranty_status ) + '</span>';
             if ( tv.pwrp_id ) { html += '<span class="badge badge-sc-ok">Service recorded on this case</span>'; }
+            html += SCI.badge( SCI.of( tv.id ) );              // 1.0.32
             html += '</div><div class="text-muted fs-7">' + SC.esc( ch.product_name );
             if ( ch.warranty_expiry ) { html += ' · warranty until ' + SC.esc( SC.showDate( ch.warranty_expiry ) ) + ( ch.extended_expiry ? ', extended until ' + SC.esc( SC.showDate( ch.extended_expiry ) ) : '' ); }
             html += '</div>';
@@ -845,13 +849,13 @@ var SC = {
             }
         }
         if ( !closed ) {
-            html += '<div class="d-flex flex-wrap gap-2 mt-2">';
+            html += '<div class="d-flex flex-wrap gap-2 mt-2">' + SCI.buttonHtml( tv, closed );   // 1.0.32: Inspect first
             if ( ch !== null && ch.psnw_id && ch.is_current ) { html += '<button type="button" class="btn btn-sm btn-primary" data-sc-action="service" data-tv-index="' + SC.current.tvs.indexOf( tv ) + '"><i class="fa-solid fa-screwdriver-wrench"></i> Record service</button>'; }
             if ( ch !== null && ch.psnw_id && ch.warranty_expiry && !ch.has_extended ) { html += '<button type="button" class="btn btn-sm btn-light-success" data-sc-action="extend" data-tv-index="' + SC.current.tvs.indexOf( tv ) + '"><i class="fa-solid fa-shield-halved"></i> Extended warranty</button>'; }
-            if ( !tv.pwrp_id ) { html += '<button type="button" class="btn btn-sm btn-light-danger" data-sc-action="remove-tv" data-tv-id="' + tv.id + '"><i class="fa-solid fa-xmark"></i> Remove</button>'; }
+            if ( !tv.pwrp_id && !SCI.of( tv.id ) ) { html += '<button type="button" class="btn btn-sm btn-light-danger" data-sc-action="remove-tv" data-tv-id="' + tv.id + '"><i class="fa-solid fa-xmark"></i> Remove</button>'; }
             html += '</div>';
         }
-        html += '</div>';
+        html += SCI.cardHtml( tv, closed ) + '</div>';      // 1.0.32: service charge, Inspect, the inspection panel
         return html;
     },
 

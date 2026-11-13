@@ -109,4 +109,5 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
 <script src="plugins/<?=$plugin_name ?>/js/<?=basename( __FILE__, ".php" ) ?>.js?v=<?= @filemtime( $sc_js ) ?>"></script>
 <script src="assets/plugins/custom/cropper/cropper.bundle.js"></script>
 <script src="plugins/<?=$plugin_name ?>/js/service_case_media.js?v=<?= @filemtime( dirname( __DIR__ ) . '/js/service_case_media.js' ) ?>"></script>
+<script src="plugins/<?=$plugin_name ?>/js/service_case_inspect.js?v=<?= @filemtime( dirname( __DIR__ ) . '/js/service_case_inspect.js' ) ?>"></script>
 <script src="plugins/<?=$plugin_name ?>/js/service_case_wizard.js?v=<?= @filemtime( dirname( __DIR__ ) . '/js/service_case_wizard.js' ) ?>"></script>

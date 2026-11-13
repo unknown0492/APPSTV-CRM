@@ -75,6 +75,7 @@ function appstv_media_list( $where ){
                         'size' => (int) $row[ 'size_bytes' ], 'source_size' => (int) $row[ 'source_bytes' ],
                         'width' => (int) $row[ 'width' ], 'height' => (int) $row[ 'height' ], 'duration' => (float) $row[ 'duration_s' ],
                         'has_thumb' => $row[ 'thumb_file' ] !== '', 'error' => $row[ 'error' ], 'case_id' => $row[ 'case_id' ] === null ? null : (int) $row[ 'case_id' ],
+                        'tv_id' => $row[ 'tv_id' ] === null ? null : (int) $row[ 'tv_id' ], 'purpose' => (string) $row[ 'purpose' ],   // 1.0.32
                         'uploaded_by' => appstv_case_user_name( $row[ 'uploaded_by' ] ), 'uploaded_on' => $row[ 'uploaded_on' ] );
     }
     return $out;
@@ -177,12 +178,19 @@ function appstv_media_start(){
     if( $kind === 'photo' && $size > APPSTV_MEDIA_MAX_PHOTO ){ throw new AppstvServiceRuleException( "This photo is too large (at most 30 MB)." ); }
     if( $kind === 'video' && $size > APPSTV_MEDIA_MAX_VIDEO ){ throw new AppstvServiceRuleException( "This video is too large (at most 500 MB)." ); }
     $count = (int) mysqli_fetch_row( appstv_case_db( "SELECT COUNT(*) FROM service_case_media m WHERE m.deleted_on = '' AND ( $same )" ) )[ 0 ];
+    // Photo of one TV for an inspection step (1.0.32): the TV must be on this case
+    $tv_id = (int) request( 'tv_id' );
+    $purpose = (string) request( 'purpose' );
+    if( $tv_id > 0 || $purpose !== '' ){
+        if( $case_id === null || $tv_id <= 0 || !in_array( $purpose, APPSTV_INSPECT_PURPOSES, true ) ){ throw new AppstvServiceRuleException( "This photo cannot be linked to the TV." ); }
+        if( mysqli_num_rows( appstv_case_db( "SELECT 1 FROM service_case_tvs WHERE id = $tv_id AND case_id = $case_id" ) ) === 0 ){ throw new AppstvServiceRuleException( "That TV is not on this case." ); }
+    }
     if( $count >= APPSTV_MEDIA_MAX_FILES ){ throw new AppstvServiceRuleException( "A case can hold up to " . APPSTV_MEDIA_MAX_FILES . " photos and videos." ); }
 
     $e_user = escape_string( appstv_case_user_id() );
     $now = create_iso_8601_datetime();
-    appstv_case_db( "INSERT INTO service_case_media ( case_id, draft_id, kind, original_name, mime, source_bytes, state, uploaded_by, uploaded_on )
-                     VALUES ( " . ( $case_id === null ? "NULL" : $case_id ) . ", " . ( $draft_id === null ? "NULL" : $draft_id ) . ", '$kind',
+    appstv_case_db( "INSERT INTO service_case_media ( case_id, draft_id, tv_id, purpose, kind, original_name, mime, source_bytes, state, uploaded_by, uploaded_on )
+                     VALUES ( " . ( $case_id === null ? "NULL" : $case_id ) . ", " . ( $draft_id === null ? "NULL" : $draft_id ) . ", " . ( $tv_id > 0 ? $tv_id : "NULL" ) . ", '" . escape_string( $purpose ) . "', '$kind',
                               '" . escape_string( $name ) . "', '" . escape_string( $mime ) . "', $size, 'uploading', '$e_user', '$now' )" );
     global $con;
     $row = appstv_media_read( (int) mysqli_insert_id( $con ) );

@@ -626,10 +626,12 @@ function appstv_case_get(){
         $main_id = ( $case[ 'case_kind' ] === 'tv' ) ? (int) $case[ 'parent_case_id' ] : $id;
         $tv_cases = array();
         foreach( appstv_case_rows( "SELECT c.id, c.tv_index, c.status, c.outcome, c.warranty_status,
-                                           ( SELECT GROUP_CONCAT( t.serial_number ORDER BY t.id SEPARATOR ', ' ) FROM service_case_tvs t WHERE t.case_id = c.id ) AS serials
+                                           ( SELECT GROUP_CONCAT( t.serial_number ORDER BY t.id SEPARATOR ', ' ) FROM service_case_tvs t WHERE t.case_id = c.id ) AS serials,
+                                           ( SELECT i.result FROM service_case_inspections i WHERE i.case_id = c.id ORDER BY i.id LIMIT 1 ) AS inspect_result
                                     FROM service_cases c WHERE c.parent_case_id = $main_id AND c.case_kind = 'tv' ORDER BY c.tv_index" ) as $row ){
             $tv_cases[] = array( 'id' => (int) $row[ 'id' ], 'label' => sprintf( 'SC-%d-%02d', $main_id, $row[ 'tv_index' ] ), 'status' => $row[ 'status' ],
-                                 'outcome' => $row[ 'outcome' ], 'warranty_status' => $row[ 'warranty_status' ], 'serials' => (string) $row[ 'serials' ] );
+                                 'outcome' => $row[ 'outcome' ], 'warranty_status' => $row[ 'warranty_status' ], 'serials' => (string) $row[ 'serials' ],
+                                 'inspect_result' => $row[ 'inspect_result' ] === null ? null : (string) $row[ 'inspect_result' ] );   // 1.0.32: null = not inspected
         }
         $history_where = "h.case_id = $id" . ( $case[ 'draft_id' ] && $case[ 'case_kind' ] !== 'tv' ? " OR ( h.draft_id = " . (int) $case[ 'draft_id' ] . " AND h.case_id IS NULL )" : "" );
 
@@ -662,7 +664,12 @@ function appstv_case_get(){
             'revisit_days' => APPSTV_CASE_REVISIT_DAYS,
             'revisit_reasons' => APPSTV_CASE_REVISIT_REASONS,
             'today' => appstv_case_today(),
-            'can_edit_staff' => hasAuthorization( 'appstv_case_staff_set' )   // 1.0.29
+            'can_edit_staff' => hasAuthorization( 'appstv_case_staff_set' ),  // 1.0.29
+            // Inspection of each TV on site (1.0.32): by service_case_tvs.id
+            'inspections' => appstv_case_inspect_list( $id ),
+            'inspect_results' => APPSTV_INSPECT_RESULTS,
+            'inspect_no_open' => APPSTV_INSPECT_NO_OPEN,
+            'can_inspect' => hasAuthorization( 'appstv_case_inspect' )
         );
         return array( "Case SC-$id.", $data );
     } );
@@ -827,6 +834,9 @@ function appstv_case_set_tv(){
             $row = mysqli_fetch_assoc( appstv_case_db( "SELECT * FROM service_case_tvs WHERE id = " . (int) request( 'remove_id' ) . " AND case_id = $id" ) );
             if( $row === null ){ throw new AppstvServiceRuleException( "That TV is not on this case." ); }
             if( (string) $row[ 'pwrp_id' ] !== '' ){ throw new AppstvServiceRuleException( "A service was recorded for this TV on this case; it cannot be removed." ); }
+            if( mysqli_num_rows( appstv_case_db( "SELECT 1 FROM service_case_inspections WHERE case_tv_id = " . (int) $row[ 'id' ] ) ) > 0 ){
+                throw new AppstvServiceRuleException( "TV " . $row[ 'serial_number' ] . " was inspected on this case; it cannot be removed." );   // 1.0.32
+            }
             appstv_case_db( "DELETE FROM service_case_tvs WHERE id = " . (int) $row[ 'id' ] );
             appstv_case_log( $id, 'tv', 'TV ' . $row[ 'serial_number' ] . ' removed from the case' );
             return array( "TV removed.", array( 'case_id' => $id ) );

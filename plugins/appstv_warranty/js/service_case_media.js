@@ -18,7 +18,8 @@
  * @description Gallery + uploader of one case or draft
  * @param {jQuery} $box - Container (filled by the gallery)
  * @param {object} options - target: function returning { case_id } or { draft_id } (may return a Promise);
- *                           editable: bool; onChange: function( media ) after an upload / removal
+ *                           editable: bool; onChange: function( media ) after an upload / removal;
+ *                           camera: bool - also a "Take photo" button that opens the phone camera (1.0.32)
  * @returns {void}
  */
 function SCMedia( $box, options ) {
@@ -68,7 +69,10 @@ SCMedia.prototype.build = function () {
     var html = '';
     if ( this.options.editable ) {
         html += '<div class="scm-add">'
-             + '<label class="btn btn-light-primary scm-add-btn"><i class="fa-solid fa-camera me-2"></i>Add photos / videos'
+             + ( this.options.camera ? '<label class="btn btn-primary scm-add-btn"><i class="fa-solid fa-camera me-2"></i>Take photo'   // 1.0.32: opens the phone camera
+                                     + '<input type="file" class="d-none scm-input" accept="image/*" capture="environment" /></label>' : '' )
+             + '<label class="btn btn-light-primary scm-add-btn"><i class="fa-solid ' + ( this.options.camera ? 'fa-images' : 'fa-camera' ) + ' me-2"></i>'
+             + ( this.options.camera ? 'Choose photos' : 'Add photos / videos' )
              + '<input type="file" class="d-none scm-input" accept="image/*,video/*" multiple /></label>'
              + '<div class="text-muted fs-7">Or drag photos / videos here. Photos are reduced to 1600 px; videos up to 500 MB are converted to under 25 MB.</div></div>'
              + '<div class="scm-queue d-none"><div class="scm-queue-head"><div class="fw-semibold">Ready to upload <span class="scm-queue-n"></span></div>'
