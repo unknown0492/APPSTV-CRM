@@ -1,7 +1,7 @@
 "use strict";
 
 /* =============================================
-   service_cases.js (v1.0.21)
+   service_cases.js (v1.0.26: visits - Finish visit, needs another visit, Visits tab)
    Plugin: appstv_warranty - Service Cases page
    List (chips + filters, due visits first), Case details (complaint, staff, visit window, TV cases, TVs with
    Record service / Extended warranty, notes timeline, change history). New cases are opened with the wizard
@@ -18,11 +18,14 @@ var SC = {
     today : '',                                                // Today in Singapore (from the list), for the card strips
     tab : 'overview',                                          // Tab shown in the case window
     gallery : null,                                            // Photos / videos of the open case (SCMedia)
-    NOTE_TYPES : [ 'note', 'status', 'service', 'close', 'reopen' ],   // Timeline lines shown on the Notes tab (the rest is in History)
+    NOTE_TYPES : [ 'note', 'status', 'service', 'close', 'reopen', 'part' ],   // Timeline lines shown on the Notes tab (the rest is in History)
     listTimer : null,                                          // Pending list reload (search typing)
     listSeq : 0,                                               // Number of the latest list request (older answers dropped)
-    STATUS : { open: 'Open', scheduled: 'Visit scheduled', visited: 'Visited', closed: 'Closed' },
-    STATUS_BADGE : { open: 'badge-light-primary', scheduled: 'badge-light-info', visited: 'badge-light-warning', closed: 'badge-light' },
+    STATUS : { open: 'Open', scheduled: 'Visit scheduled', visited: 'Visited', revisit: 'Needs another visit', closed: 'Closed' },
+    STATUS_BADGE : { open: 'badge-light-primary', scheduled: 'badge-light-info', visited: 'badge-light-warning', revisit: 'badge-sc-revisit', closed: 'badge-light' },
+    // Why another visit is needed (1.0.26, same keys as APPSTV_CASE_REVISIT_REASONS)
+    REVISIT_REASONS : { part: 'Spare part needed', tools: 'More tools needed', not_available: 'Customer or room not available', senior: 'Needs a senior technician', other: 'Other' },
+    PART_STATES : { needed: 'Needed', ordered: 'Ordered', arrived: 'Arrived' },
     OUTCOME : { repaired: 'Repaired', replaced: 'Replaced', no_fault: 'No fault found', not_covered: 'Not covered' },
 
     /**
@@ -279,10 +282,30 @@ var SC = {
         if ( c.status === 'closed' ) { return { tone: 'success', icon: 'fa-flag-checkered', text: 'Closed' + ( c.outcome ? ' · ' + SC.OUTCOME[ c.outcome ] : '' ) }; }
         if ( c.status === 'visited' ) { return { tone: 'muted', icon: 'fa-check', text: 'Visited · close the case when done' }; }
         var due = SC.dueInfo( c, SC.today );
-        if ( due.tileClass === 'is-danger' ) { return { tone: 'danger', icon: 'fa-triangle-exclamation', text: 'Visit deadline missed · ' + due.text.replace( 'Deadline missed ', '' ) }; }
-        if ( due.tileClass === 'is-warning' ) { return { tone: 'warning', icon: 'fa-clock', text: due.badge + ' · ' + due.text }; }
-        if ( due.text ) { return { tone: 'info', icon: 'fa-calendar-day', text: 'Visit ' + due.text.toLowerCase() }; }
-        return { tone: 'muted', icon: 'fa-calendar-xmark', text: 'Visit not planned yet' };
+        var why = c.last_visit ? SC.revisitWhy( c.last_visit, true ) : '';
+        if ( c.status === 'revisit' ) {
+            if ( due.tileClass === 'is-danger' ) { return { tone: 'danger', icon: 'fa-triangle-exclamation', text: 'Next visit not planned · ' + c.revisit_wait + ' days' + ( why ? ' · ' + why : '' ) }; }
+            return { tone: 'revisit', icon: 'fa-rotate', text: 'Needs another visit' + ( why ? ' · ' + why : '' ) };
+        }
+        var next = c.visit_count ? 'Visit ' + ( c.visit_count + 1 ) : 'Visit';
+        if ( due.tileClass === 'is-danger' ) { return { tone: 'danger', icon: 'fa-triangle-exclamation', text: next + ' deadline missed · ' + due.text.replace( 'Deadline missed ', '' ) }; }
+        if ( c.revisit_tv_count ) { return { tone: 'revisit', icon: 'fa-rotate', text: c.revisit_tv_count + ' TV case' + ( c.revisit_tv_count > 1 ? 's need' : ' needs' ) + ' another visit' }; }
+        if ( due.tileClass === 'is-warning' ) { return { tone: 'warning', icon: 'fa-clock', text: ( c.visit_count ? next + ' · ' : '' ) + due.badge + ' · ' + due.text }; }
+        if ( due.text ) { return { tone: 'info', icon: 'fa-calendar-day', text: next + ' ' + due.text.toLowerCase() }; }
+        return { tone: 'muted', icon: 'fa-calendar-xmark', text: next + ' not planned yet' };
+    },
+
+    /**
+     * @description Why another visit is needed, short: "Spare part needed: T-Con board (ordered)"
+     * @param {object} v - A visit (reason, reason_text, part_name, part_status)
+     * @param {boolean} [withState] - Add the state of the spare part
+     * @returns {string} '' when the visit fixed it
+     */
+    revisitWhy : function ( v, withState ) {
+        if ( !v || v.result !== 'revisit' ) { return ''; }
+        var text = v.reason_text || SC.REVISIT_REASONS[ v.reason ] || '';
+        if ( v.part_name ) { text += ': ' + v.part_name + ( withState && v.part_status ? ' (' + ( SC.PART_STATES[ v.part_status ] || v.part_status ).toLowerCase() + ')' : '' ); }
+        return text;
     },
 
     /**
@@ -339,11 +362,17 @@ var SC = {
     renderCase : function () {
         var d = SC.current, c = d.case;
         var closed = ( c.status === 'closed' );
+        c.revisit_wait = d.revisit_wait;                       // For dueInfo (the list sends it per case)
+        c.revisit_days = d.revisit_days;
+        var visits = d.visits || [];
+        var nextNo = visits.length + 1;                        // Number of the visit to plan / finish next
         var due = SC.dueInfo( c, d.today );
 
         // ── Header ──
         var actions = '<button type="button" class="btn btn-sm btn-light" data-sc-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span class="d-none d-md-inline ms-1">History</span></button>';
-        if ( c.status === 'open' || c.status === 'scheduled' ) { actions += '<button type="button" class="btn btn-sm btn-light-warning" data-sc-action="visited"><i class="fa-solid fa-check"></i><span class="ms-1">Mark as visited</span></button>'; }
+        if ( c.status === 'open' || c.status === 'scheduled' || c.status === 'revisit' ) {
+            actions += '<button type="button" class="btn btn-sm btn-light-warning" data-sc-action="finish-visit"><i class="fa-solid fa-person-walking-arrow-right"></i><span class="ms-1">Finish visit' + ( nextNo > 1 ? ' ' + nextNo : '' ) + '</span></button>';
+        }
         if ( !closed ) { actions += '<button type="button" class="btn btn-sm btn-success" data-sc-action="close"><i class="fa-solid fa-flag-checkered"></i><span class="ms-1">Close case</span></button>'; }
         if ( closed || c.status === 'visited' ) { actions += '<button type="button" class="btn btn-sm btn-light-primary" data-sc-action="reopen"><i class="fa-solid fa-rotate-left"></i><span class="ms-1">Reopen</span></button>'; }
         var context = '';
@@ -373,18 +402,27 @@ var SC = {
             closed ? '' : '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-contact"><i class="fa-solid fa-pen"></i>Edit</button>' );
 
         var visit = '<div id="scd_visit_view">';
+        if ( c.status === 'revisit' && visits.length ) {
+            visit += '<div class="sc-tile-value">Visit ' + nextNo + ' not planned</div>'
+                   + '<div class="sc-tile-sub">' + SC.esc( SC.revisitWhy( visits[ 0 ], true ) ) + '</div>';
+        } else if ( nextNo > 1 && !closed && c.status !== 'visited' ) {
+            visit += '<div class="sc-tile-sub fw-semibold">Visit ' + nextNo + '</div>';
+        }
         if ( c.visit_to ) {
             visit += '<div class="sc-tile-value">' + SC.esc( SC.showDate( c.visit_from ) ) + ( c.visit_to !== c.visit_from ? ' – ' + SC.esc( SC.showDate( c.visit_to ) ) : '' ) + '</div>';
         }
         visit += ( due.text ? '<div class="sc-tile-sub ' + due.textClass + '">' + SC.esc( due.text ) + '</div>' : '' )
               + ( c.visit_date ? '<div class="sc-tile-sub"><i class="fa-regular fa-calendar-check me-1"></i>Planned: ' + SC.esc( SC.showDate( c.visit_date ) ) + ( c.visit_time ? ' ' + SC.esc( c.visit_time ) : '' ) + '</div>' : '' )
-              + ( !c.visit_to && !c.visit_date ? '<div class="sc-tile-value text-muted">Not planned</div>' : '' ) + '</div>'
+              + ( !c.visit_to && !c.visit_date && c.status !== 'revisit' ? '<div class="sc-tile-value text-muted">Not planned</div>' : '' )
+              + ( c.status === 'visited' && visits.length ? '<div class="sc-tile-sub text-success fw-semibold"><i class="fa-solid fa-check me-1 text-success"></i>Visit ' + visits[ 0 ].visit_no + ' fixed it</div>' : '' ) + '</div>'
               + '<div id="scd_visit_edit" class="d-none"><div class="d-flex gap-2 mb-2">'
               + '<input type="date" id="scd_visit_date" class="form-control form-control-sm form-control-solid" value="' + SC.esc( c.visit_date ) + '" aria-label="Visit date"/>'
               + '<input type="time" id="scd_visit_time" class="form-control form-control-sm form-control-solid sc-time" value="' + SC.esc( c.visit_time ) + '" aria-label="Visit time"/></div>'
               + '<input type="hidden" id="scd_assigned" value="' + SC.esc( c.assigned_user_id ) + '"/>'
               + '<div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-light" data-sc-action="cancel-edit">Cancel</button><button type="button" class="btn btn-sm btn-primary" data-sc-action="save-visit">Save</button></div></div>';
-        tiles += SC.tileHtml( 'fa-calendar-days', 'Visit', visit, closed ? '' : '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-visit"><i class="fa-regular fa-calendar-plus"></i>' + ( c.visit_date ? 'Change date' : 'Plan the visit' ) + '</button>', due.tileClass );
+        var planLabel = c.visit_date ? 'Change date' : ( nextNo > 1 ? 'Plan visit ' + nextNo : 'Plan the visit' );
+        tiles += SC.tileHtml( 'fa-calendar-days', nextNo > 1 && !closed && c.status !== 'visited' ? 'Next visit' : 'Visit', visit,
+                              closed || c.status === 'visited' ? '' : '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-visit"><i class="fa-regular fa-calendar-plus"></i>' + planLabel + '</button>', due.tileClass );
 
         var staff = ( c.staff && c.staff.length ) ? c.staff.map( function ( s ) { return s.name || s.user_id; } ) : ( SC.staffName( c.assigned_user_id ) ? [ SC.staffName( c.assigned_user_id ) ] : [] );
         tiles += SC.tileHtml( 'fa-user-gear', 'Assigned to', staff.length ? '<div class="sc-tile-value">' + SC.esc( staff.join( ', ' ) ) + '</div>' : '<div class="sc-tile-value text-muted">Nobody yet</div>', '' );
@@ -398,7 +436,7 @@ var SC = {
         // ── Tabs ──
         var tvCount = c.kind === 'main' ? d.tv_cases.length : d.tvs.length;
         var notes = d.notes.filter( function ( n ) { return SC.NOTE_TYPES.indexOf( n.type ) !== -1; } );
-        var tabs = [ [ 'overview', 'Overview', null ], [ 'tvs', 'TVs', tvCount ], [ 'media', 'Photos & videos', d.media.length ], [ 'notes', 'Notes', notes.length ] ];
+        var tabs = [ [ 'overview', 'Overview', null ], [ 'visits', 'Visits', visits.length ], [ 'tvs', 'TVs', tvCount ], [ 'media', 'Photos & videos', d.media.length ], [ 'notes', 'Notes', notes.length ] ];
         $( '#sc_case_tabs' ).html( $.map( tabs, function ( t ) {
             return '<button type="button" class="sc-tab' + ( SC.tab === t[ 0 ] ? ' is-active' : '' ) + '" role="tab" aria-selected="' + ( SC.tab === t[ 0 ] ) + '" data-sc-tab="' + t[ 0 ] + '">'
                  + SC.esc( t[ 1 ] ) + ( t[ 2 ] !== null ? '<span class="sc-tab-n" data-tab-n="' + t[ 0 ] + '">' + t[ 2 ] + '</span>' : '' ) + '</button>';
@@ -423,6 +461,9 @@ var SC = {
         overview += '<div class="sc-card-box"><div class="sc-box-head"><div class="sc-box-title">Details</div></div><div class="sc-facts">'
             + $.map( facts, function ( f ) { return '<div class="sc-fact-k">' + f[ 0 ] + '</div><div class="sc-fact-v">' + f[ 1 ] + '</div>'; } ).join( '' ) + '</div></div>';
         $( '#sc_pane_overview' ).html( overview );
+
+        // Visits
+        $( '#sc_pane_visits' ).html( SC.visitsHtml( d, closed ) );
 
         // TVs
         var tvsHtml = SC.tvCasesHtml( d );
@@ -450,7 +491,7 @@ var SC = {
         SC.gallery.setMedia( d.media );
 
         // Notes
-        var icons = { note: 'fa-comment', status: 'fa-check', service: 'fa-screwdriver-wrench', close: 'fa-flag-checkered', reopen: 'fa-rotate-left' };
+        var icons = { note: 'fa-comment', status: 'fa-check', service: 'fa-screwdriver-wrench', close: 'fa-flag-checkered', reopen: 'fa-rotate-left', part: 'fa-box' };
         var notesHtml = '<div class="sc-card-box"><textarea id="scd_note" class="form-control form-control-solid mb-2" rows="2" maxlength="5000" placeholder="Add a note: call log, findings, parts needed…" aria-label="Note"></textarea>'
             + '<div class="text-end"><button type="button" class="btn btn-sm btn-primary" data-sc-action="add-note">Add note</button></div></div>';
         if ( notes.length === 0 ) { notesHtml += '<div class="text-muted text-center py-6">No notes yet.</div>'; }
@@ -485,6 +526,15 @@ var SC = {
     dueInfo : function ( c, today ) {
         var none = { badge: '', badgeClass: '', text: '', textClass: '', tileClass: '' };
         if ( c.status === 'closed' || c.status === 'visited' ) { return none; }
+        if ( c.status === 'revisit' ) {
+            // Needs another visit, no date yet: red after revisit_days days of waiting (1.0.26)
+            var wait = +c.revisit_wait || 0;
+            var waited = wait === 0 ? 'Waiting since today' : 'Waiting ' + wait + ' day' + ( wait > 1 ? 's' : '' ) + ' for a date';
+            if ( wait > ( +c.revisit_days || 3 ) ) {
+                return { badge: 'Next visit not planned', badgeClass: 'badge-danger', text: waited, textClass: 'text-danger fw-semibold', tileClass: 'is-danger' };
+            }
+            return { badge: '', badgeClass: '', text: waited, textClass: 'sc-text-revisit fw-semibold', tileClass: 'is-revisit' };
+        }
         var days = function ( a, b ) { return Math.round( ( new Date( b + 'T00:00:00Z' ) - new Date( a + 'T00:00:00Z' ) ) / 86400000 ); };
         var end = c.visit_date || c.visit_to;
         if ( !end ) { return none; }
@@ -565,6 +615,143 @@ var SC = {
                  + '<span class="badge ' + SC.STATUS_BADGE[ t.status ] + '">' + SC.STATUS[ t.status ] + '</span></span></button>';
         } );
         return html + '</div>';
+    },
+
+    /**
+     * @description HTML of the Visits tab: the planned next visit, then every trip (newest first) with its result,
+     *              reason, spare part (Needed / Ordered / Arrived buttons) and note
+     * @param {object} d - Data of appstv_case_get
+     * @param {boolean} closed - True when the case is closed
+     * @returns {string}
+     */
+    visitsHtml : function ( d, closed ) {
+        var c = d.case, visits = d.visits || [];
+        var e = SC.esc;
+        var html = '';
+        var nextNo = visits.length + 1;
+        if ( !closed && c.status !== 'visited' ) {
+            var when = c.visit_date ? SC.showDate( c.visit_date ) + ( c.visit_time ? ' ' + c.visit_time : '' )
+                     : ( c.visit_to ? SC.showDate( c.visit_from ) + ( c.visit_to !== c.visit_from ? ' – ' + SC.showDate( c.visit_to ) : '' ) : '' );
+            html += '<div class="sc-visit sc-visit-next"><div class="sc-visit-no">' + nextNo + '</div><div class="sc-visit-body">'
+                  + '<div class="sc-visit-head"><span class="sc-visit-title">Visit ' + nextNo + '</span>'
+                  + ( when ? '<span class="badge badge-light-info">Planned · ' + e( when ) + '</span>' : '<span class="badge badge-light">Not planned yet</span>' ) + '</div>'
+                  + '<div class="d-flex flex-wrap gap-2 mt-2">'
+                  + '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-visit-tab"><i class="fa-regular fa-calendar-plus"></i>' + ( c.visit_date ? 'Change date' : 'Plan visit ' + nextNo ) + '</button>'
+                  + '<button type="button" class="btn btn-sm sc-pill" data-sc-action="finish-visit"><i class="fa-solid fa-person-walking-arrow-right"></i>Finish visit ' + nextNo + '</button></div>'
+                  + '</div></div>';
+        }
+        if ( visits.length === 0 ) {
+            return html + '<div class="text-muted text-center py-6">No visits yet. When the technician is back from the site, use <b>Finish visit</b>.</div>';
+        }
+        $.each( visits, function ( i, v ) {
+            var fixed = v.result === 'fixed';
+            var staff = $.map( v.staff, function ( s ) { return s.name || s.user_id; } ).join( ', ' );
+            html += '<div class="sc-visit ' + ( fixed ? 'is-fixed' : 'is-revisit' ) + '"><div class="sc-visit-no">' + v.visit_no + '</div><div class="sc-visit-body">'
+                  + '<div class="sc-visit-head"><span class="sc-visit-title">Visit ' + v.visit_no + ' · ' + e( SC.showDate( v.visited_on ) ) + '</span>'
+                  + ( fixed ? '<span class="badge badge-light-success"><i class="fa-solid fa-check me-1 text-success"></i>Fixed</span>'
+                            : '<span class="badge badge-sc-revisit"><i class="fa-solid fa-rotate me-1"></i>Needs another visit</span>' ) + '</div>'
+                  + ( staff ? '<div class="sc-visit-line"><i class="fa-solid fa-user-gear"></i>' + e( staff ) + '</div>' : '' );
+            if ( !fixed ) {
+                html += '<div class="sc-visit-line"><i class="fa-solid fa-circle-question"></i>' + e( v.reason_text || SC.REVISIT_REASONS[ v.reason ] || '' ) + '</div>';
+            }
+            if ( v.part_name ) {
+                html += '<div class="sc-visit-part"><span><i class="fa-solid fa-box me-2"></i>Spare part: <b>' + e( v.part_name ) + '</b></span><span class="sc-part-steps" role="group" aria-label="Spare part state">';
+                $.each( SC.PART_STATES, function ( key, label ) {
+                    var on = ( v.part_status || 'needed' ) === key;
+                    html += closed ? ( on ? '<span class="badge badge-light-primary">' + label + '</span>' : '' )
+                         : '<button type="button" class="sc-part-step' + ( on ? ' is-on' : '' ) + '" data-sc-action="part" data-visit-id="' + v.id + '" data-part-status="' + key + '" aria-pressed="' + on + '">' + label + '</button>';
+                } );
+                html += '</span>' + ( v.part_status_on && v.part_status_by ? '<span class="text-muted fs-8 w-100">' + e( SC.PART_STATES[ v.part_status ] ) + ' · ' + e( v.part_status_by ) + ', ' + e( SC.showStamp( v.part_status_on ) ) + '</span>' : '' ) + '</div>';
+            }
+            if ( v.note ) { html += '<div class="sc-hl-quote sc-pre">' + e( v.note ) + '</div>'; }
+            html += '<div class="text-muted fs-8 mt-2">Recorded by ' + e( v.by || 'someone' ) + ', ' + e( SC.showStamp( v.on ) ) + '</div></div></div>';
+        } );
+        return html;
+    },
+
+    /**
+     * @description Asks how the visit ended and records it: fixed, or needs another visit (reason, part, note, next date)
+     * @returns {void}
+     */
+    finishVisit : function () {
+        var d = SC.current, c = d.case;
+        var no = ( d.visits || [] ).length + 1;
+        var team = ( c.staff && c.staff.length ) ? c.staff.map( function ( s ) { return s.user_id; } ) : ( c.assigned_user_id ? [ c.assigned_user_id ] : [] );
+        if ( team.length === 0 && SC.staffName( SC.me ) ) { team = [ SC.me ]; }
+        var today = SCW.singaporeNow().date;
+        var staff = $.map( SC.staff, function ( s ) {
+            return '<label class="scv-check"><input type="checkbox" class="form-check-input" name="scv_staff" value="' + SC.esc( s.user_id ) + '"' + ( team.indexOf( s.user_id ) !== -1 ? ' checked' : '' ) + '/>'
+                 + '<span>' + SC.esc( s.name ) + ( s.user_id === SC.me ? ' (me)' : '' ) + '</span></label>';
+        } ).join( '' );
+        var reasons = $.map( SC.REVISIT_REASONS, function ( label, key ) {
+            return '<label class="scv-check"><input type="radio" class="form-check-input" name="scv_reason" value="' + key + '"/><span>' + SC.esc( label ) + '</span></label>';
+        } ).join( '' );
+        var html = '<div class="text-start scv-form">'
+            + '<div class="row g-3 mb-4"><div class="col-sm-5"><label class="form-label required" for="scv_date">Date of the visit</label>'
+            + '<input type="date" id="scv_date" class="form-control form-control-solid" value="' + today + '" max="' + today + '"/></div>'
+            + '<div class="col-sm-7"><label class="form-label required">Who went</label><div class="scv-checks">' + staff + '</div></div></div>'
+            + '<label class="form-label required">Result</label>'
+            + '<div class="scv-results" role="radiogroup">'
+            + '<label class="scv-result is-fixed"><input type="radio" name="scv_result" value="fixed"/><i class="fa-solid fa-circle-check"></i><span><b>Fixed / done</b><small>Nothing more to do at the site</small></span></label>'
+            + '<label class="scv-result is-revisit"><input type="radio" name="scv_result" value="revisit"/><i class="fa-solid fa-rotate"></i><span><b>Needs another visit</b><small>Parts, tools, nobody there</small></span></label></div>'
+            + '<div id="scv_revisit" class="d-none mt-4">'
+            + '<label class="form-label required">Why another visit?</label><div class="scv-checks scv-checks-col mb-3">' + reasons + '</div>'
+            + '<div id="scv_part_box" class="d-none mb-3"><label class="form-label required" for="scv_part">Which spare part?</label>'
+            + '<input type="text" id="scv_part" class="form-control form-control-solid" maxlength="200" placeholder="e.g. T-Con board, power board, remote"/></div>'
+            + '<label class="form-label" for="scv_next_date">Plan visit ' + ( no + 1 ) + ' now <span class="text-muted fw-normal">(optional)</span></label>'
+            + '<div class="d-flex gap-2 mb-3"><input type="date" id="scv_next_date" class="form-control form-control-solid flex-grow-1" min="' + today + '"/>'
+            + '<input type="time" id="scv_next_time" class="form-control form-control-solid sc-time" aria-label="Time of the next visit"/></div></div>'
+            + '<label class="form-label mt-4" id="scv_note_label" for="scv_note">Note <span class="text-muted fw-normal">(what was done, what was found)</span></label>'
+            + '<textarea id="scv_note" class="form-control form-control-solid" rows="3" maxlength="2000"></textarea>'
+            + '<div class="form-text mt-3"><i class="fa-regular fa-image me-1"></i>Photos from the site: add them on the <b>Photos &amp; videos</b> tab.</div></div>';
+
+        Swal.fire( {
+            title : 'Finish visit ' + no + ' of ' + SC.esc( c.label ),
+            html : html,
+            width : 640,
+            heightAuto : false,
+            showCancelButton : true,
+            confirmButtonText : 'Save visit',
+            buttonsStyling : false,
+            focusConfirm : false,
+            customClass : { popup: 'scv-popup', confirmButton: 'btn btn-primary', cancelButton: 'btn btn-light' },
+            didOpen : function ( popup ) {
+                var $p = $( popup );
+                $p.on( 'change', 'input[name="scv_result"]', function () {
+                    var revisit = $p.find( 'input[name="scv_result"]:checked' ).val() === 'revisit';
+                    $p.find( '.scv-result' ).each( function () { $( this ).toggleClass( 'is-on', $( this ).find( 'input' ).prop( 'checked' ) ); } );
+                    $p.find( '#scv_revisit' ).toggleClass( 'd-none', !revisit );
+                } );
+                $p.on( 'change', 'input[name="scv_reason"]', function () {
+                    var reason = $p.find( 'input[name="scv_reason"]:checked' ).val();
+                    $p.find( '#scv_part_box' ).toggleClass( 'd-none', reason !== 'part' );
+                    $p.find( '#scv_note_label' ).toggleClass( 'required', reason === 'other' );
+                    if ( reason === 'part' ) { $p.find( '#scv_part' ).trigger( 'focus' ); }
+                } );
+            },
+            preConfirm : function () {
+                var $p = $( Swal.getPopup() );
+                var result = $p.find( 'input[name="scv_result"]:checked' ).val();
+                var reason = $p.find( 'input[name="scv_reason"]:checked' ).val() || '';
+                var team = $p.find( 'input[name="scv_staff"]:checked' ).map( function () { return this.value; } ).get();
+                var data = { what_do_you_want: 'appstv_case_visit_finish', case_id: c.id, visited_on: $p.find( '#scv_date' ).val(), staff: JSON.stringify( team ),
+                             result: result || '', reason: reason, part_name: $.trim( $p.find( '#scv_part' ).val() ), note: $.trim( $p.find( '#scv_note' ).val() ),
+                             next_date: $p.find( '#scv_next_date' ).val(), next_time: $p.find( '#scv_next_date' ).val() ? $p.find( '#scv_next_time' ).val() : '' };
+                if ( !data.visited_on ) { Swal.showValidationMessage( 'Enter the date of the visit.' ); return false; }
+                if ( team.length === 0 ) { Swal.showValidationMessage( 'Tick who went to the site.' ); return false; }
+                if ( !result ) { Swal.showValidationMessage( 'Choose the result: fixed, or needs another visit.' ); return false; }
+                if ( result === 'revisit' && !reason ) { Swal.showValidationMessage( 'Choose why another visit is needed.' ); return false; }
+                if ( result === 'revisit' && reason === 'part' && !data.part_name ) { Swal.showValidationMessage( 'Write which spare part is needed.' ); return false; }
+                if ( result === 'revisit' && reason === 'other' && !data.note ) { Swal.showValidationMessage( 'Write why another visit is needed (Note).' ); return false; }
+                return SC.post( data ).catch( function ( message ) { Swal.showValidationMessage( message ); return false; } );
+            }
+        } ).then( function ( r ) {
+            if ( r.isConfirmed && r.value ) {
+                showSimpleToast( 'success', r.value.message );
+                SC.tab = 'visits';
+                SC.reloadCase();
+            }
+        } );
     },
 
     /**
@@ -651,7 +838,18 @@ var SC = {
             if ( !$( '#scd_visit_date' ).val() ) { $( '#scd_visit_time' ).val( '' ); }
             update( { assigned_user_id: $( '#scd_assigned' ).val(), visit_date: $( '#scd_visit_date' ).val(), visit_time: $( '#scd_visit_time' ).val() } ).catch( function () {} );
         }
-        if ( action === 'visited' ) { update( { status: 'visited' } ).catch( function () {} ); }
+        if ( action === 'finish-visit' ) { SC.finishVisit(); }
+        if ( action === 'edit-visit-tab' ) {                  // From the Visits tab: open the date editor of the Visit tile
+            $( '#scd_visit_view' ).addClass( 'd-none' );
+            $( '#scd_visit_edit' ).removeClass( 'd-none' );
+            $( '[data-sc-action="edit-visit"]' ).addClass( 'd-none' );
+            $( '#scd_visit_date' ).trigger( 'focus' );
+            $( '#sc_case_tiles' )[ 0 ].scrollIntoView( { behavior: 'smooth', block: 'nearest' } );
+        }
+        if ( action === 'part' ) {
+            if ( $el.hasClass( 'is-on' ) ) { return; }
+            SC.caseCall( { what_do_you_want: 'appstv_case_visit_part', visit_id: $el.attr( 'data-visit-id' ), part_status: $el.attr( 'data-part-status' ) } ).catch( function () {} );
+        }
         if ( action === 'reopen' ) {
             showConfirmSweetAlert( 'Reopen ' + SC.esc( c.label ) + '?', 'The case becomes active again.', 'question', 'Reopen', 'btn btn-primary', 'Cancel', 'btn btn-light',
                 function () { update( { status: 'open' } ).catch( function () {} ); } );

@@ -420,3 +420,74 @@
     .sc-tab.is-active { top: 0; padding-top: 11px; border-color: #009ef7; box-shadow: inset 0 3px 0 #009ef7; }
     .sc-pane { border-top: 1px solid #dbdfe9; border-radius: 0.75rem; padding: 16px; }
 }
+
+/* =============================================
+   v1.0.26: visits - needs another visit (orange), Visits tab, Finish visit form
+   ============================================= */
+
+/* Orange: needs another visit */
+.badge-sc-revisit { background: #fff1e6; color: #c2410c; }
+.badge-sc-revisit i { color: inherit; }
+.scc-strip-revisit { background: #ff8a3d; color: #fff; }
+.sc-tile.is-revisit { border-top-color: #ff8a3d; }
+.sc-text-revisit { color: #c2410c; }
+
+/* Visits tab: one row per trip, numbered */
+.sc-visit { display: flex; gap: 14px; padding: 14px 16px; margin-bottom: 12px; border: 1px solid #eff2f5; border-left: 4px solid #a1a5b7; border-radius: 0.65rem; background: #fff; }
+.sc-visit.is-fixed { border-left-color: #50cd89; }
+.sc-visit.is-revisit { border-left-color: #ff8a3d; }
+.sc-visit-next { border-style: dashed; border-left-style: solid; border-left-color: #009ef7; background: #f8fbff; }
+.sc-visit-no {
+    flex: 0 0 34px; height: 34px; border-radius: 50%; background: #f1f1f4; color: #3f4254; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+}
+.sc-visit.is-fixed .sc-visit-no { background: #e8fff3; color: #1d8a52; }
+.sc-visit.is-revisit .sc-visit-no { background: #fff1e6; color: #c2410c; }
+.sc-visit-next .sc-visit-no { background: #e1f3ff; color: #0073b7; }
+.sc-visit-body { flex: 1; min-width: 0; }
+.sc-visit-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.sc-visit-title { font-weight: 700; font-size: 1.02rem; color: #181c32; }
+.sc-visit-line { margin-top: 6px; color: #3f4254; display: flex; align-items: baseline; gap: 8px; }
+.sc-visit-line i { color: #a1a5b7; width: 16px; text-align: center; }
+.sc-visit-part {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 10px;
+    padding: 10px 12px; background: #fafbfc; border: 1px solid #eff2f5; border-radius: 0.5rem;
+}
+.sc-visit-part i { color: #a1a5b7; }
+.sc-part-steps { display: inline-flex; border: 1px solid #dbdfe9; border-radius: 2rem; overflow: hidden; }
+.sc-part-step { border: 0; background: #fff; color: #5e6278; padding: 4px 14px; font-size: 0.85rem; font-weight: 600; }
+.sc-part-step + .sc-part-step { border-left: 1px solid #dbdfe9; }
+.sc-part-step:hover { background: #f1faff; color: #009ef7; }
+.sc-part-step.is-on { background: #009ef7; color: #fff; }
+
+/* Finish visit form */
+.scv-checks { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.scv-checks-col { flex-direction: column; gap: 8px; }
+.scv-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; }
+.scv-check .form-check-input { margin: 0; flex: 0 0 auto; }
+.scv-results { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.scv-result {
+    position: relative; display: flex; align-items: center; gap: 12px; padding: 14px; margin: 0; cursor: pointer;
+    border: 2px solid #e4e6ef; border-radius: 0.75rem; background: #fff; transition: border-color 0.15s, background 0.15s;
+}
+.scv-result input { position: absolute; opacity: 0; pointer-events: none; }
+.scv-result i { font-size: 1.6rem; color: #b5b5c3; }
+.scv-result span { display: flex; flex-direction: column; line-height: 1.3; color: #181c32; }
+.scv-result small { color: #7e8299; margin-top: 2px; }
+.scv-result:hover { border-color: #b5b5c3; }
+.scv-result:focus-within { outline: 2px solid #009ef7; outline-offset: 2px; }
+.scv-result.is-fixed.is-on { border-color: #50cd89; background: #e8fff3; }
+.scv-result.is-fixed.is-on i { color: #1d8a52; }
+.scv-result.is-revisit.is-on { border-color: #ff8a3d; background: #fff1e6; }
+.scv-result.is-revisit.is-on i { color: #c2410c; }
+
+@media (max-width: 575.98px) {
+    .scv-results { grid-template-columns: 1fr; }
+    .sc-visit { padding: 12px; gap: 10px; }
+    /* 5 tabs in 2 columns: the last one takes the whole row */
+    .sc-tab:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* Finish visit: the theme caps SweetAlert bodies at 200px; this form uses the window height, no sideways scroll */
+.scv-popup .swal2-html-container { max-height: calc(100vh - 200px); overflow-x: hidden; overflow-y: auto; }
+.scv-form .d-flex > .form-control { min-width: 0; }

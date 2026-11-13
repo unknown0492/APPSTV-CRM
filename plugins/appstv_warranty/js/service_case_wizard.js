@@ -964,7 +964,8 @@ var SCH = {
 
     // Scalar fields: name used in a sentence ("changed the number of TVs from 1 to 3")
     LABELS : { complained_date: 'complaint date', complained_time: 'complaint time', tv_count: 'number of TVs', warranty: 'warranty',
-               warranty_status: 'warranty', visit_from: 'first day of the visit window', visit_to: 'last day of the visit window' },
+               warranty_status: 'warranty', visit_from: 'first day of the visit window', visit_to: 'last day of the visit window',
+               visit_date: 'planned visit date' },
     // List fields: what ticking / unticking an item reads like
     LISTS : {
         channels :      { add: 'noted that they complained by', remove: 'removed the complaint channel' },
@@ -1013,6 +1014,7 @@ var SCH = {
     valueText : function ( field, v ) {
         if ( field === 'warranty' || field === 'warranty_status' ) { return SCW.WARRANTY[ v ] || String( v ); }
         if ( /^(visit_from|visit_to|complained_date)$/.test( field ) ) { return SC.showDate( String( v ) ); }
+        if ( field === 'visit_date' ) { return SC.showDate( String( v ).substr( 0, 10 ) ) + String( v ).substr( 10 ); }   // "15/11/2026 10:00"
         return String( v );
     },
 
@@ -1032,6 +1034,14 @@ var SCH = {
             var what = m ? 'a ' + m[ 1 ].toLowerCase() : 'a photo / video';
             return ( h.action === 'media_added' ? 'added ' : 'removed ' ) + what + ( m ? ': ' + q( m[ 2 ] ) : '' );
         }
+        if ( h.action === 'visit_finished' ) {               // 1.0.26: "finished visit 1: needs another visit (spare part needed: T-Con board)"
+            var v = SCH.parse( h.new ) || {};
+            if ( !v.visit_no ) { return e( h.detail ); }
+            var why = v.result === 'revisit' ? ' (' + e( ( SC.REVISIT_REASONS[ v.reason ] || v.reason ).toLowerCase() ) + ( v.part_name ? ': ' + q( v.part_name ) : '' ) + ')' : '';
+            return 'finished visit ' + q( String( v.visit_no ) ) + ': ' + q( v.result === 'fixed' ? 'fixed' : 'needs another visit' ) + why
+                 + ( v.note ? '<div class="sc-hl-quote">“' + e( v.note.length > 220 ? v.note.substr( 0, 220 ) + '…' : v.note ) + '”</div>' : '' );
+        }
+        if ( h.action === 'part_status' ) { return 'marked the spare part ' + q( h.detail || '' ) + ' as ' + q( String( SCH.parse( h.new ) || '' ).toLowerCase() ); }
         if ( h.action !== 'changed' ) { return e( h.detail || h.action.replace( /_/g, ' ' ) ); }
 
         var f = h.field, o = SCH.parse( h.old ), n = SCH.parse( h.new );

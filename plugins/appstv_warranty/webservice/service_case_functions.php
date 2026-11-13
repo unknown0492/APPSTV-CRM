@@ -4,7 +4,7 @@
  * Service Cases (v1.0.7) - webservice actions of the Service Cases page and the service actions of the Warranty page
  *
  * A case = a customer's call: customer, contact, problem, zero or more TVs, an assigned staff member and a visit
- * date, a notes timeline. Status: open -> scheduled (visit date set) -> visited -> closed (outcome repaired /
+ * date, a notes timeline. Status: open -> scheduled (visit date set) -> visited (or revisit = needs another visit, 1.0.26) -> closed (outcome repaired /
  * replaced / no_fault / not_covered). Closing as repaired / replaced needs a service event recorded on one of the
  * case's TVs.
  *
@@ -15,7 +15,7 @@
  * of the original customer, dated the day of service.
  */
 
-define( 'APPSTV_CASE_STATUSES', array( 'open', 'scheduled', 'visited', 'closed' ) );
+define( 'APPSTV_CASE_STATUSES', array( 'open', 'scheduled', 'visited', 'revisit', 'closed' ) );   // revisit = needs another visit (1.0.26)
 define( 'APPSTV_CASE_OUTCOMES', array( 'repaired', 'replaced', 'no_fault', 'not_covered' ) );
 define( 'APPSTV_CASE_STAFF_ROLES', "'Administrator', 'APPSTV Admin'" );   // Roles whose users can be assigned to cases
 
@@ -478,6 +478,10 @@ function appstv_case_list(){
         // Due: the planned visit date, else the visit window (1.0.21)
         $overdue  = "( c.status IN ( 'open', 'scheduled' ) AND ( ( c.visit_date <> '' AND c.visit_date < '$today' ) OR ( c.visit_date = '' AND c.visit_to <> '' AND c.visit_to < '$today' ) ) )";
         $due_today = "( c.status IN ( 'open', 'scheduled' ) AND ( c.visit_date = '$today' OR ( c.visit_date = '' AND c.visit_from <> '' AND c.visit_from <= '$today' AND c.visit_to >= '$today' ) ) )";
+        // 1.0.26: needs another visit and no date planned for more than APPSTV_CASE_REVISIT_DAYS days = deadline missed too
+        $revisit_limit = date( 'Y-m-d', strtotime( $today . ' -' . APPSTV_CASE_REVISIT_DAYS . ' days' ) );
+        $revisit_late = "( c.status = 'revisit' AND c.visit_date = '' AND ( SELECT v.visited_on FROM service_case_visits v WHERE v.case_id = c.id ORDER BY v.visit_no DESC LIMIT 1 ) < '$revisit_limit' )";
+        $overdue = "( $overdue OR $revisit_late )";
 
         if( $status === '' || $status === 'active' ){ $where[] = "c.status <> 'closed'"; }
         else if( $status === 'overdue' ){ $where[] = $overdue; }
@@ -510,13 +514,17 @@ function appstv_case_list(){
                        ( SELECT GROUP_CONCAT( s.user_id ORDER BY s.added_on SEPARATOR ',' ) FROM service_case_staff s WHERE s.case_id = c.id ) AS staff_ids,
                        ( SELECT COUNT(*) FROM service_cases k WHERE k.parent_case_id = c.id AND k.case_kind = 'tv' ) AS tv_case_count,
                        ( SELECT COUNT(*) FROM service_case_media m WHERE m.case_id = c.id AND m.deleted_on = '' AND m.state <> 'uploading' ) AS media_count,
-                       ( SELECT COUNT(*) FROM service_case_notes n WHERE n.case_id = c.id AND n.note_type = 'note' ) AS note_count
+                       ( SELECT COUNT(*) FROM service_case_notes n WHERE n.case_id = c.id AND n.note_type = 'note' ) AS note_count,
+                       ( SELECT COUNT(*) FROM service_case_visits v WHERE v.case_id = c.id ) AS visit_count,
+                       ( SELECT COUNT(*) FROM service_cases k WHERE k.parent_case_id = c.id AND k.case_kind = 'tv' AND k.status = 'revisit' ) AS revisit_tv_count,
+                       lv.visited_on AS lv_on, lv.result AS lv_result, lv.reason AS lv_reason, lv.part_name AS lv_part, lv.part_status AS lv_part_status
                 FROM service_cases c
+                LEFT JOIN service_case_visits lv ON lv.case_id = c.id AND lv.visit_no = ( SELECT MAX( x.visit_no ) FROM service_case_visits x WHERE x.case_id = c.id )
                 LEFT JOIN customers cu ON cu.customer_id = c.customer_id
                 LEFT JOIN users u ON CONVERT( u.user_id USING utf8mb4 ) COLLATE utf8mb4_unicode_ci = c.assigned_user_id   -- users is utf16
                 WHERE " . implode( ' AND ', $where ) . "
                 ORDER BY ( c.status = 'closed' ),
-                         ( CASE WHEN c.status IN ( 'open', 'scheduled' ) AND ( c.visit_date <> '' OR c.visit_to <> '' ) THEN 0 ELSE 1 END ),
+                         ( CASE WHEN $revisit_late THEN 0 WHEN c.status IN ( 'open', 'scheduled' ) AND ( c.visit_date <> '' OR c.visit_to <> '' ) THEN 1 ELSE 2 END ),   -- late revisits first (1.0.26)
                          COALESCE( NULLIF( c.visit_date, '' ), c.visit_to ), c.visit_time, c.id DESC
                 LIMIT 300";
         $cases = array();
@@ -527,6 +535,16 @@ function appstv_case_list(){
             } else if( in_array( $row[ 'status' ], array( 'open', 'scheduled' ) ) && (string) $row[ 'visit_to' ] !== '' ){
                 $due = ( $row[ 'visit_to' ] < $today ) ? 'overdue' : ( $row[ 'visit_from' ] <= $today ? 'today' : 'upcoming' );
             }
+            // Waiting for the next visit to be planned (1.0.26)
+            $revisit_wait = 0;
+            if( $row[ 'status' ] === 'revisit' && (string) $row[ 'visit_date' ] === '' && (string) $row[ 'lv_on' ] !== '' ){
+                $revisit_wait = max( 0, (int) round( ( strtotime( $today ) - strtotime( $row[ 'lv_on' ] ) ) / 86400 ) );
+                if( $revisit_wait > APPSTV_CASE_REVISIT_DAYS ){ $due = 'overdue'; }
+            }
+            $last_visit = ( (string) $row[ 'lv_result' ] === '' ) ? null : array(
+                'visited_on' => $row[ 'lv_on' ], 'result' => $row[ 'lv_result' ], 'reason' => (string) $row[ 'lv_reason' ],
+                'reason_text' => array_key_exists( (string) $row[ 'lv_reason' ], APPSTV_CASE_REVISIT_REASONS ) ? APPSTV_CASE_REVISIT_REASONS[ $row[ 'lv_reason' ] ] : '',
+                'part_name' => (string) $row[ 'lv_part' ], 'part_status' => (string) $row[ 'lv_part_status' ] );
             $staff_names = array();
             foreach( ( (string) $row[ 'staff_ids' ] === '' ) ? array() : explode( ',', $row[ 'staff_ids' ] ) as $staff_id ){ $staff_names[] = appstv_case_user_name( $staff_id ); }
             if( count( $staff_names ) === 0 && trim( $row[ 'a_fname' ] . ' ' . $row[ 'a_lname' ] ) !== '' ){ $staff_names[] = trim( $row[ 'a_fname' ] . ' ' . $row[ 'a_lname' ] ); }
@@ -541,7 +559,9 @@ function appstv_case_list(){
                 'problem' => $row[ 'problem' ], 'serials' => (string) $row[ 'serials' ],
                 'assigned_user_id' => (string) $row[ 'assigned_user_id' ], 'assigned_name' => trim( $row[ 'a_fname' ] . ' ' . $row[ 'a_lname' ] ),
                 'visit_date' => (string) $row[ 'visit_date' ], 'visit_time' => (string) $row[ 'visit_time' ], 'due' => $due,
-                'created_on' => $row[ 'created_on' ], 'closed_on' => $row[ 'closed_on' ], 'note_count' => (int) $row[ 'note_count' ]
+                'created_on' => $row[ 'created_on' ], 'closed_on' => $row[ 'closed_on' ], 'note_count' => (int) $row[ 'note_count' ],
+                'visit_count' => (int) $row[ 'visit_count' ], 'last_visit' => $last_visit, 'revisit_wait' => $revisit_wait,
+                'revisit_days' => APPSTV_CASE_REVISIT_DAYS, 'revisit_tv_count' => (int) $row[ 'revisit_tv_count' ]
             );
         }
 
@@ -627,6 +647,11 @@ function appstv_case_get(){
             'media' => appstv_media_list( "m.case_id = $id" . ( $case[ 'case_kind' ] === 'tv' ? " OR m.case_id = " . (int) $case[ 'parent_case_id' ] : "" ) ),
             'history' => appstv_case_history_list( $history_where ),
             'notes' => $notes,
+            // Visits to the site (1.0.26): newest first; waiting days when another visit is needed and none is planned
+            'visits' => appstv_case_visit_rows( $id ),
+            'revisit_wait' => appstv_case_revisit_wait( $case ),
+            'revisit_days' => APPSTV_CASE_REVISIT_DAYS,
+            'revisit_reasons' => APPSTV_CASE_REVISIT_REASONS,
             'today' => appstv_case_today()
         );
         return array( "Case SC-$id.", $data );
@@ -723,19 +748,23 @@ function appstv_case_update(){
         if( array_key_exists( 'visit_date', $in ) ){
             list( $date, $time ) = appstv_case_visit_fields( $in[ 'visit_date' ], isset( $in[ 'visit_time' ] ) ? $in[ 'visit_time' ] : '' );
             if( $date !== (string) $case[ 'visit_date' ] || $time !== (string) $case[ 'visit_time' ] ){
+                // 1.0.26: the number of the visit being planned (after a visit that needed another one: 2, 3 ...)
+                $done = mysqli_fetch_assoc( appstv_case_db( "SELECT COUNT(*) AS n, MAX( CASE WHEN visit_no = ( SELECT MAX( visit_no ) FROM service_case_visits WHERE case_id = $id ) THEN result END ) AS last_result
+                                                             FROM service_case_visits WHERE case_id = $id" ) );
+                $next_no = (int) $done[ 'n' ] + 1;
                 $set[] = "visit_date = '$date'";
                 $set[] = "visit_time = '$time'";
-                $log[] = array( 'visit', $date === '' ? 'Visit date removed' : 'Visit set for ' . $date . ( $time !== '' ? ' ' . $time : '' ) );
-                if( $status === 'open' && $date !== '' ){ $status = 'scheduled'; }
-                if( $status === 'scheduled' && $date === '' ){ $status = 'open'; }
+                $log[] = array( 'visit', $date === '' ? 'Visit date removed' : ( $next_no > 1 ? 'Visit ' . $next_no : 'Visit' ) . ' set for ' . $date . ( $time !== '' ? ' ' . $time : '' ) );
+                appstv_case_history( $id, null, 'changed', 'visit_date', (string) $case[ 'visit_date' ] === '' ? null : $case[ 'visit_date' ] . ( (string) $case[ 'visit_time' ] !== '' ? ' ' . $case[ 'visit_time' ] : '' ),
+                                     $date === '' ? null : $date . ( $time !== '' ? ' ' . $time : '' ), $next_no > 1 ? 'visit ' . $next_no : '' );
+                if( ( $status === 'open' || $status === 'revisit' ) && $date !== '' ){ $status = 'scheduled'; }
+                if( $status === 'scheduled' && $date === '' ){ $status = ( $done[ 'last_result' ] === 'revisit' ) ? 'revisit' : 'open'; }
             }
         }
 
         if( isset( $in[ 'status' ] ) ){
             if( $in[ 'status' ] === 'visited' ){
-                if( !in_array( $case[ 'status' ], array( 'open', 'scheduled' ) ) ){ throw new AppstvServiceRuleException( "Only an open or scheduled case can be marked as visited." ); }
-                $status = 'visited';
-                $log[] = array( 'status', 'Marked as visited' );
+                throw new AppstvServiceRuleException( "Use Finish visit to end a visit." );   // 1.0.26: every visit is recorded with its result
             } else if( $in[ 'status' ] === 'open' ){
                 if( $case[ 'status' ] !== 'closed' && $case[ 'status' ] !== 'visited' ){ throw new AppstvServiceRuleException( "Only a visited or closed case can be reopened." ); }
                 $status = ( (string) $case[ 'visit_date' ] >= appstv_case_today() ) ? 'scheduled' : 'open';   // A future visit stays scheduled

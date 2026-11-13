@@ -24,6 +24,7 @@ require_once $root . '/plugins/appstv_warranty/webservice/service_case_functions
 require_once $root . '/plugins/appstv_warranty/webservice/service_case_wizard_functions.php';
 require_once $root . '/plugins/appstv_warranty/webservice/service_case_draft_functions.php';
 require_once $root . '/plugins/appstv_warranty/webservice/service_case_media_functions.php';
+require_once $root . '/plugins/appstv_warranty/webservice/service_case_visit_functions.php';
 
 define( 'APPSTV_VIDEO_TARGET_BYTES', 24 * 1024 * 1024 );    // Aim (limit 25 MB, 1 MB spare for the container)
 define( 'APPSTV_VIDEO_LIMIT_BYTES', 25 * 1024 * 1024 );     // Must stay under

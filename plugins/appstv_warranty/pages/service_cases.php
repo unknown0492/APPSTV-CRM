@@ -46,6 +46,7 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
                             <option value="today">Visits today</option>
                             <option value="open">Open</option>
                             <option value="scheduled">Visit scheduled</option>
+                            <option value="revisit">Needs another visit</option>
                             <option value="visited">Visited</option>
                             <option value="closed">Closed</option>
                             <option value="all">All</option>
@@ -90,6 +91,7 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
                 <div id="sc_case_tiles" class="sc-tiles"></div>
                 <div id="sc_case_tabs" class="sc-tabs" role="tablist"></div>
                 <div class="sc-pane" data-pane="overview" id="sc_pane_overview" role="tabpanel"></div>
+                <div class="sc-pane d-none" data-pane="visits" id="sc_pane_visits" role="tabpanel"></div>
                 <div class="sc-pane d-none" data-pane="tvs" id="sc_pane_tvs" role="tabpanel"></div>
                 <div class="sc-pane d-none" data-pane="media" role="tabpanel"><div id="sc_case_media"></div></div>
                 <div class="sc-pane d-none" data-pane="notes" id="sc_pane_notes" role="tabpanel"></div>
