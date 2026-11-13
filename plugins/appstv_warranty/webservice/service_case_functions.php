@@ -17,7 +17,17 @@
 
 define( 'APPSTV_CASE_STATUSES', array( 'open', 'scheduled', 'visited', 'revisit', 'closed' ) );   // revisit = needs another visit (1.0.26)
 define( 'APPSTV_CASE_OUTCOMES', array( 'repaired', 'replaced', 'no_fault', 'not_covered' ) );
-define( 'APPSTV_CASE_STAFF_ROLES', "'Administrator', 'APPSTV Admin'" );   // Roles whose users can be assigned to cases
+define( 'APPSTV_CASE_TECHNICIAN', 'appstv_case_visit_technician' );   // Permission: users of roles holding it can be assigned (1.0.29)
+define( 'APPSTV_CASE_MAX_STAFF', 20 );                                     // Most staff on one case
+
+/**
+ * @description SQL condition: the user (alias u, a users row) has a role holding the visit technician permission (1.0.29)
+ * @returns {string}
+ */
+function appstv_case_technician_where(){
+    return "EXISTS ( SELECT 1 FROM roles_functionalities rf JOIN functionalities f ON f.functionality_id = rf.functionality_id
+                     WHERE rf.role_id = u.role_id AND f.functionality_name = '" . APPSTV_CASE_TECHNICIAN . "' )";
+}
 
 /**
  * A rule stopped a service action; the message is meant for the user (database errors are never shown)
@@ -330,8 +340,7 @@ function appstv_case_user_name( $user_id ){
 function appstv_case_is_staff( $user_id ){
     if( $user_id === '' ){ return true; }
     $e = escape_string( $user_id );
-    return mysqli_num_rows( appstv_case_db( "SELECT 1 FROM users u JOIN roles r ON r.role_id = u.role_id
-                                             WHERE u.user_id = '$e' AND r.role_name IN ( " . APPSTV_CASE_STAFF_ROLES . " ) LIMIT 1" ) ) > 0;
+    return mysqli_num_rows( appstv_case_db( "SELECT 1 FROM users u WHERE u.user_id = '$e' AND " . appstv_case_technician_where() . " LIMIT 1" ) ) > 0;
 }
 
 /**
@@ -425,8 +434,7 @@ function appstv_case_service_invoice( $ref_no, $customer_id, $date ){
 function appstv_case_staff(){
     checkAuthorizationForFunction( __FUNCTION__ );
     appstv_case_answer( __FUNCTION__, function(){
-        $rows = appstv_case_rows( "SELECT u.user_id, u.fname, u.lname FROM users u JOIN roles r ON r.role_id = u.role_id
-                                   WHERE r.role_name IN ( " . APPSTV_CASE_STAFF_ROLES . " ) ORDER BY u.fname, u.lname" );
+        $rows = appstv_case_rows( "SELECT u.user_id, u.fname, u.lname FROM users u WHERE " . appstv_case_technician_where() . " ORDER BY u.fname, u.lname" );
         $staff = array();
         foreach( $rows as $row ){
             $staff[] = array( 'user_id' => $row[ 'user_id' ], 'name' => trim( $row[ 'fname' ] . ' ' . $row[ 'lname' ] ) );
@@ -606,7 +614,8 @@ function appstv_case_get(){
         // Wizard fields (1.0.21): staff, channels, models, main / TV cases, history
         $staff = array();
         foreach( appstv_case_rows( "SELECT user_id FROM service_case_staff WHERE case_id = $id ORDER BY added_on, user_id" ) as $row ){
-            $staff[] = array( 'user_id' => $row[ 'user_id' ], 'name' => appstv_case_user_name( $row[ 'user_id' ] ) );
+            $staff[] = array( 'user_id' => $row[ 'user_id' ], 'name' => appstv_case_user_name( $row[ 'user_id' ] ),
+                              'technician' => appstv_case_is_staff( $row[ 'user_id' ] ) );
         }
         $channels = array_column( appstv_case_rows( "SELECT channel FROM service_case_channels WHERE case_id = $id" ), 'channel' );
         $models = array();
@@ -652,7 +661,8 @@ function appstv_case_get(){
             'revisit_wait' => appstv_case_revisit_wait( $case ),
             'revisit_days' => APPSTV_CASE_REVISIT_DAYS,
             'revisit_reasons' => APPSTV_CASE_REVISIT_REASONS,
-            'today' => appstv_case_today()
+            'today' => appstv_case_today(),
+            'can_edit_staff' => hasAuthorization( 'appstv_case_staff_set' )   // 1.0.29
         );
         return array( "Case SC-$id.", $data );
     } );
@@ -994,5 +1004,73 @@ function appstv_add_extended_warranty(){
             appstv_case_log( $case_id, 'service', "Extended warranty +$years year(s) for TV {$chain['serial_number']}, until " . $end->format( 'Y-m-d' ) . ( $remarks !== '' ? ': ' . $remarks : '' ) );
         }
         return array( "Extended warranty added until " . $end->format( 'd/m/Y' ) . ".", array( 'until' => $end->format( 'Y-m-d' ) ) );
+    } );
+}
+
+
+/**
+ * Changes the staff of a case (1.0.29): case_id, staff (JSON list of users.user_id, the full new list).
+ * A "one case per TV" case changes as a whole: the main case and all its TV cases get the same staff, whichever of
+ * them is sent. New people must be visit technicians; people already on the case may stay even when their role lost
+ * the permission. At least one person stays. Each person added gets an e-mail; the change goes into the history.
+ */
+function appstv_case_staff_set(){
+    checkAuthorizationForFunction( __FUNCTION__ );
+    appstv_case_transaction( __FUNCTION__, function(){
+        $case = appstv_case_read( request( 'case_id' ), true );
+        $root = ( $case[ 'case_kind' ] === 'tv' ) ? appstv_case_read( $case[ 'parent_case_id' ], true ) : $case;
+        $root_id = (int) $root[ 'id' ];
+        if( $root[ 'status' ] === 'closed' ){ throw new AppstvServiceRuleException( "This case is closed. Reopen it first." ); }
+
+        $staff = json_decode( (string) request( 'staff' ), true );
+        if( !is_array( $staff ) ){ $staff = array(); }
+        $staff = array_values( array_unique( array_filter( array_map( function( $v ){ return trim( (string) $v ); }, $staff ), 'strlen' ) ) );
+        if( count( $staff ) === 0 ){ throw new AppstvServiceRuleException( "At least one person must stay on the case." ); }
+        if( count( $staff ) > APPSTV_CASE_MAX_STAFF ){ throw new AppstvServiceRuleException( "At most " . APPSTV_CASE_MAX_STAFF . " people can be on one case." ); }
+
+        $old = array_column( appstv_case_rows( "SELECT user_id FROM service_case_staff WHERE case_id = $root_id ORDER BY added_on, user_id" ), 'user_id' );
+        if( count( $old ) === 0 && (string) $root[ 'assigned_user_id' ] !== '' ){ $old = array( (string) $root[ 'assigned_user_id' ] ); }   // Older cases
+        $added = array_values( array_diff( $staff, $old ) );
+        $removed = array_values( array_diff( $old, $staff ) );
+        foreach( $added as $user_id ){
+            if( !appstv_case_is_staff( $user_id ) ){ throw new AppstvServiceRuleException( "Only visit technicians can be added to a case." ); }
+        }
+        if( count( $added ) === 0 && count( $removed ) === 0 ){
+            return array( "No change.", array( 'changed' => false ) );
+        }
+
+        // The main case and its TV cases (or the single case)
+        $ids = array( $root_id );
+        if( $root[ 'case_kind' ] === 'main' ){
+            foreach( appstv_case_rows( "SELECT id FROM service_cases WHERE parent_case_id = $root_id AND case_kind = 'tv'" ) as $row ){ $ids[] = (int) $row[ 'id' ]; }
+        }
+        $now = create_iso_8601_datetime();
+        $user = escape_string( appstv_case_user_id() );
+        $first = escape_string( $staff[ 0 ] );
+        foreach( $ids as $id ){
+            foreach( $removed as $user_id ){
+                appstv_case_db( "DELETE FROM service_case_staff WHERE case_id = $id AND user_id = '" . escape_string( $user_id ) . "'" );
+            }
+            foreach( $staff as $user_id ){
+                $e = escape_string( $user_id );
+                appstv_case_db( "INSERT INTO service_case_staff ( case_id, user_id, added_by, added_on )
+                                 SELECT $id, '$e', '$user', '$now' FROM DUAL
+                                 WHERE NOT EXISTS ( SELECT 1 FROM service_case_staff WHERE case_id = $id AND user_id = '$e' )" );
+            }
+            appstv_case_db( "UPDATE service_cases SET assigned_user_id = '$first', updated_on = '$now' WHERE id = $id" );
+        }
+
+        $names = function( $list ){ return implode( ', ', array_map( function( $u ){ return appstv_case_user_name( $u ) ?: $u; }, $list ) ); };
+        $parts = array();
+        if( count( $added ) ){ $parts[] = 'added ' . $names( $added ); }
+        if( count( $removed ) ){ $parts[] = 'removed ' . $names( $removed ); }
+        $detail = ucfirst( implode( '; ', $parts ) ) . ( count( $ids ) > 1 ? ' (main case and its ' . ( count( $ids ) - 1 ) . ' TV cases)' : '' );
+        $name_list = function( $list ){ return array_map( function( $u ){ return appstv_case_user_name( $u ) ?: $u; }, $list ); };
+        appstv_case_history( $root_id, null, 'changed', 'staff', $name_list( $old ), $name_list( $staff ), count( $ids ) > 1 ? 'Main case and its ' . ( count( $ids ) - 1 ) . ' TV cases' : '' );
+        appstv_case_log( $root_id, 'assign', 'Staff: ' . $detail );
+        appstv_case_mail_queue( $root_id, $added, 'added' );
+
+        return array( "Staff changed" . ( count( $added ) ? "; " . count( $added ) . " person(s) will get an e-mail" : "" ) . ".",
+                      array( 'changed' => true, 'case_ids' => $ids ) );
     } );
 }

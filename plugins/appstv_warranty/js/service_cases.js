@@ -425,7 +425,8 @@ var SC = {
                               closed || c.status === 'visited' ? '' : '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-visit"><i class="fa-regular fa-calendar-plus"></i>' + planLabel + '</button>', due.tileClass );
 
         var staff = ( c.staff && c.staff.length ) ? c.staff.map( function ( s ) { return s.name || s.user_id; } ) : ( SC.staffName( c.assigned_user_id ) ? [ SC.staffName( c.assigned_user_id ) ] : [] );
-        tiles += SC.tileHtml( 'fa-user-gear', 'Assigned to', staff.length ? '<div class="sc-tile-value">' + SC.esc( staff.join( ', ' ) ) + '</div>' : '<div class="sc-tile-value text-muted">Nobody yet</div>', '' );
+        tiles += SC.tileHtml( 'fa-user-gear', 'Assigned to', staff.length ? '<div class="sc-tile-value">' + SC.esc( staff.join( ', ' ) ) + '</div>' : '<div class="sc-tile-value text-muted">Nobody yet</div>',
+                              d.can_edit_staff && !closed ? '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-staff"><i class="fa-solid fa-user-pen"></i>Change</button>' : '', '' );
 
         var tvsText = c.kind === 'tv' ? 'This TV' : c.tv_count + ' TV' + ( c.tv_count > 1 ? 's' : '' );
         tiles += SC.tileHtml( 'fa-shield-halved', 'Warranty',
@@ -679,7 +680,8 @@ var SC = {
         var team = ( c.staff && c.staff.length ) ? c.staff.map( function ( s ) { return s.user_id; } ) : ( c.assigned_user_id ? [ c.assigned_user_id ] : [] );
         if ( team.length === 0 && SC.staffName( SC.me ) ) { team = [ SC.me ]; }
         var today = SCW.singaporeNow().date;
-        var staff = $.map( SC.staff, function ( s ) {
+        var people = SC.staff.concat( ( c.staff || [] ).filter( function ( s ) { return !SC.staffName( s.user_id ); } ) );   // + case staff who lost the permission (1.0.29)
+        var staff = $.map( people, function ( s ) {
             return '<label class="scv-check"><input type="checkbox" class="form-check-input" name="scv_staff" value="' + SC.esc( s.user_id ) + '"' + ( team.indexOf( s.user_id ) !== -1 ? ' checked' : '' ) + '/>'
                  + '<span>' + SC.esc( s.name ) + ( s.user_id === SC.me ? ' (me)' : '' ) + '</span></label>';
         } ).join( '' );
@@ -750,6 +752,57 @@ var SC = {
                 showSimpleToast( 'success', r.value.message );
                 SC.tab = 'visits';
                 SC.reloadCase();
+            }
+        } );
+    },
+
+    /**
+     * @description Changes the staff of the open case (1.0.29): visit technicians can be added, anyone removed (one
+     *              must stay). A main case and its TV cases change together. Each person added gets an e-mail.
+     * @returns {void}
+     */
+    editStaff : function () {
+        var d = SC.current, c = d.case;
+        var now = ( c.staff && c.staff.length ) ? c.staff : ( c.assigned_user_id ? [ { user_id: c.assigned_user_id, name: SC.staffName( c.assigned_user_id ), technician: true } ] : [] );
+        var onCase = now.map( function ( s ) { return s.user_id; } );
+        var row = function ( s, note ) {
+            var on = onCase.indexOf( s.user_id ) !== -1;
+            return '<label class="scv-check scs-person' + ( on ? ' is-on' : '' ) + '"><input type="checkbox" class="form-check-input" name="scs_staff" value="' + SC.esc( s.user_id ) + '"' + ( on ? ' checked' : '' ) + '/>'
+                 + '<span><span class="fw-semibold">' + SC.esc( s.name || s.user_id ) + ( s.user_id === SC.me ? ' (me)' : '' ) + '</span>'
+                 + ( note ? '<span class="scs-note">' + SC.esc( note ) + '</span>' : '' ) + '</span></label>';
+        };
+        var html = $.map( SC.staff, function ( s ) { return row( s, '' ); } ).join( '' );
+        // On the case but no longer a visit technician: can stay or be removed, not added again
+        html += $.map( now.filter( function ( s ) { return !SC.staffName( s.user_id ); } ), function ( s ) { return row( s, 'No longer a visit technician: can stay, but cannot be added again once removed' ); } ).join( '' );
+        var scope = c.kind === 'main' ? 'This changes the main case and all its ' + ( d.tv_cases || [] ).length + ' TV cases.'
+                  : ( c.kind === 'tv' ? 'This changes main case SC-' + c.parent_case_id + ' and all its TV cases.' : '' );
+        Swal.fire( {
+            title : 'Staff of ' + SC.esc( c.label ),
+            html : '<div class="text-start scv-form">'
+                 + ( scope ? '<div class="scs-scope"><i class="fa-solid fa-layer-group"></i><span>' + SC.esc( scope ) + '</span></div>' : '' )
+                 + '<div class="scs-list">' + ( html || '<div class="text-muted">No visit technicians yet. Give a role the “visit technician” permission in Role Management.</div>' ) + '</div>'
+                 + '<div class="form-text mt-3"><i class="fa-regular fa-envelope me-1"></i>People you add get an e-mail with the case details.</div></div>',
+            width : 560,
+            heightAuto : false,
+            showCancelButton : true,
+            confirmButtonText : 'Save staff',
+            buttonsStyling : false,
+            focusConfirm : false,
+            customClass : { popup: 'scv-popup', confirmButton: 'btn btn-primary', cancelButton: 'btn btn-light' },
+            didOpen : function ( popup ) {
+                $( popup ).on( 'change', 'input[name="scs_staff"]', function () { $( this ).closest( '.scs-person' ).toggleClass( 'is-on', this.checked ); } );
+            },
+            preConfirm : function () {
+                var team = $( Swal.getPopup() ).find( 'input[name="scs_staff"]:checked' ).map( function () { return this.value; } ).get();
+                if ( team.length === 0 ) { Swal.showValidationMessage( 'At least one person must stay on the case.' ); return false; }
+                return SC.post( { what_do_you_want: 'appstv_case_staff_set', case_id: c.id, staff: JSON.stringify( team ) } )
+                    .catch( function ( message ) { Swal.showValidationMessage( message ); return false; } );
+            }
+        } ).then( function ( r ) {
+            if ( r.isConfirmed && r.value ) {
+                showSimpleToast( r.value.data && r.value.data.changed === false ? 'info' : 'success', r.value.message );
+                SC.reloadCase();
+                SC.loadList();
             }
         } );
     },
@@ -839,6 +892,7 @@ var SC = {
             update( { assigned_user_id: $( '#scd_assigned' ).val(), visit_date: $( '#scd_visit_date' ).val(), visit_time: $( '#scd_visit_time' ).val() } ).catch( function () {} );
         }
         if ( action === 'finish-visit' ) { SC.finishVisit(); }
+        if ( action === 'edit-staff' ) { SC.editStaff(); }
         if ( action === 'edit-visit-tab' ) {                  // From the Visits tab: open the date editor of the Visit tile
             $( '#scd_visit_view' ).addClass( 'd-none' );
             $( '#scd_visit_edit' ).removeClass( 'd-none' );

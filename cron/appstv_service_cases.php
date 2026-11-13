@@ -195,8 +195,8 @@ function appstv_cron_mail( $dry ){
     global $con;
     connect();
     // Rows left "sending" by a run that was killed go back to the queue
-    appstv_case_db( "UPDATE service_case_mails SET state = 'queued' WHERE state = 'sending' AND kind = 'opened' AND sent_on < '" . ( new DateTime( '-1 hour' ) )->format( 'c' ) . "'" );
-    $rows = appstv_case_rows( "SELECT * FROM service_case_mails WHERE state = 'queued' AND attempts < " . APPSTV_CASE_MAIL_ATTEMPTS . " ORDER BY id LIMIT " . APPSTV_CASE_MAIL_BATCH );
+    appstv_case_db( "UPDATE service_case_mails SET state = 'queued' WHERE state = 'sending' AND kind IN ( 'opened', 'added' ) AND sent_on < '" . ( new DateTime( '-1 hour' ) )->format( 'c' ) . "'" );
+    $rows = appstv_case_rows( "SELECT * FROM service_case_mails WHERE state = 'queued' AND kind IN ( 'opened', 'added' ) AND attempts < " . APPSTV_CASE_MAIL_ATTEMPTS . " ORDER BY id LIMIT " . APPSTV_CASE_MAIL_BATCH );
     foreach( $rows as $row ){
         $id = (int) $row[ 'id' ];
         $now = create_iso_8601_datetime();
@@ -207,7 +207,7 @@ function appstv_cron_mail( $dry ){
             appstv_case_db( "UPDATE service_case_mails SET state = 'skipped', error = '" . ( $user === null ? 'User not found' : 'No valid e-mail address' ) . "' WHERE id = $id" );
             continue;
         }
-        $mail = appstv_case_mail_opened( $row[ 'case_id' ], $user[ 'name' ] );
+        $mail = appstv_case_mail_opened( $row[ 'case_id' ], $user[ 'name' ], $row[ 'kind' ] );
         if( $mail === null ){
             appstv_case_db( "UPDATE service_case_mails SET state = 'skipped', error = 'Case not found' WHERE id = $id" );
             continue;
@@ -230,8 +230,12 @@ function appstv_cron_digest( $dry ){
     connect();
     set_time_limit( 0 );
     $today = appstv_case_today();
-    $staff = appstv_case_rows( "SELECT CONVERT( u.user_id USING utf8mb4 ) AS user_id FROM users u JOIN roles r ON r.role_id = u.role_id
-                                WHERE r.role_name IN ( " . APPSTV_CASE_STAFF_ROLES . " ) ORDER BY u.id" );
+    // Everyone on a case that is not closed (also someone whose role lost the visit technician permission, 1.0.29)
+    $staff = appstv_case_rows( "SELECT DISTINCT s.user_id FROM service_case_staff s JOIN service_cases c ON c.id = s.case_id
+                                WHERE c.status <> 'closed' AND c.case_kind <> 'tv'
+                                UNION
+                                SELECT DISTINCT c.assigned_user_id FROM service_cases c
+                                WHERE c.status <> 'closed' AND c.case_kind <> 'tv' AND c.assigned_user_id IS NOT NULL AND c.assigned_user_id <> ''" );
     foreach( $staff as $s ){
         $user = appstv_case_mail_user( $s[ 'user_id' ] );
         if( $user === null ){ continue; }

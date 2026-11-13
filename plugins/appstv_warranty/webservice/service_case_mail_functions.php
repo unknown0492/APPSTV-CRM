@@ -4,6 +4,7 @@
  *
  *   New case:  appstv_case_mail_queue() is called while the case is opened (same transaction); the every-minute
  *              job (cron/appstv_service_cases.php mail) sends one e-mail per assigned staff member.
+ *   Added:     the same e-mail ("You were added to case ...") when someone is added to a case later (1.0.29).
  *   9:00 list: the daily job (cron/appstv_service_cases.php digest) sends each staff member one e-mail with all
  *              their cases that are not closed, the ones needing action first:
  *                1. Visit deadline missed (red, every day until the case is closed)
@@ -29,18 +30,21 @@ define( 'APPSTV_CASE_MAIL_WARRANTY', array( 'under' => 'Under warranty', 'out' =
  *              so nothing is queued when the opening fails)
  * @param {int} $case_id - The case (single or main case)
  * @param {array} $user_ids - users.user_id of the staff
+ * @param {string} $kind - opened (case opened) | added (added to the case later, 1.0.29)
  * @returns {void}
  */
-function appstv_case_mail_queue( $case_id, $user_ids ){
+function appstv_case_mail_queue( $case_id, $user_ids, $kind = 'opened' ){
     $case_id = (int) $case_id;
     $now = create_iso_8601_datetime();
+    $e_kind = ( $kind === 'added' ) ? 'added' : 'opened';
     foreach( array_unique( $user_ids ) as $user_id ){
         $user_id = (string) $user_id;
         if( $user_id === '' ){ continue; }
         $e_user = escape_string( $user_id );
-        $e_key = escape_string( 'opened:' . $case_id . ':' . $user_id );
+        // "opened" once per case and person; "added" each time (removed and added again = a new e-mail)
+        $key = ( $e_kind === 'opened' ) ? "'" . escape_string( 'opened:' . $case_id . ':' . $user_id ) . "'" : "NULL";
         appstv_case_db( "INSERT IGNORE INTO service_case_mails ( kind, case_id, user_id, dedupe_key, state, created_on )
-                         VALUES ( 'opened', $case_id, '$e_user', '$e_key', 'queued', '$now' )" );
+                         VALUES ( '$e_kind', $case_id, '$e_user', $key, 'queued', '$now' )" );
     }
 }
 
@@ -182,9 +186,10 @@ function appstv_case_mail_send( $to, $subject, $html, $dry_dir ){
  * @description The "new case" e-mail for one staff member
  * @param {int} $case_id - The case
  * @param {string} $name - The staff member's name
+ * @param {string} $kind - opened | added (added to the case later)
  * @returns {array|null} [ subject, html ], null when the case no longer exists
  */
-function appstv_case_mail_opened( $case_id, $name ){
+function appstv_case_mail_opened( $case_id, $name, $kind = 'opened' ){
     $case_id = (int) $case_id;
     $c = mysqli_fetch_assoc( appstv_case_db( "SELECT c.*, cu.company_name, cu.first_name, cu.last_name FROM service_cases c
                                               LEFT JOIN customers cu ON cu.customer_id = c.customer_id WHERE c.id = $case_id" ) );
@@ -236,8 +241,10 @@ function appstv_case_mail_opened( $case_id, $name ){
     }
     $body .= '</table>';
 
-    $subject = "New service case $label · $customer";
-    $html = appstv_case_mail_page( "New case $label for you", "Hello $name, this case was assigned to you.", $body,
+    $added = ( $kind === 'added' );
+    $subject = ( $added ? "You were added to service case" : "New service case" ) . " $label · $customer";
+    $html = appstv_case_mail_page( $added ? "You were added to case $label" : "New case $label for you",
+                                   $added ? "Hello $name, you were added to this case." : "Hello $name, this case was assigned to you.", $body,
                                    array( 'text' => "Open $label", 'url' => appstv_case_mail_link( $case_id ) ),
                                    "You will find it in your 9:00 list every morning until it is closed." );
     return array( $subject, $html );

@@ -151,7 +151,7 @@ function appstv_case_open_errors( $a ){
     // Last step
     if( count( $a[ 'staff' ] ) === 0 ){ $add( 6, "Assign the case to at least one staff member." ); }
     foreach( $a[ 'staff' ] as $user_id ){
-        if( !appstv_case_is_staff( $user_id ) ){ $add( 6, "A chosen staff member cannot be assigned to cases. Choose the staff again." ); break; }
+        if( !appstv_case_is_staff( $user_id ) ){ $add( 6, "A chosen staff member is not a visit technician (any more). Choose the staff again." ); break; }
     }
     if( !appstv_case_valid_date( $a[ 'visit_from' ] ) || !appstv_case_valid_date( $a[ 'visit_to' ] ) ){ $add( 6, "Enter the visit window (from and to dates)." ); }
     else if( $a[ 'visit_to' ] < $a[ 'visit_from' ] ){ $add( 6, "The visit window ends before it starts." ); }

@@ -10,7 +10,7 @@
 
 CREATE TABLE IF NOT EXISTS service_case_mails (
     id          INT NOT NULL AUTO_INCREMENT,
-    kind        VARCHAR(10) NOT NULL COMMENT 'opened | digest',
+    kind        VARCHAR(10) NOT NULL COMMENT 'opened | added | digest',
     case_id     INT NULL COMMENT 'service_cases.id (opened); NULL for a digest',
     user_id     VARCHAR(100) NOT NULL COMMENT 'users.user_id of the staff member',
     dedupe_key  VARCHAR(150) NULL COMMENT 'Same key = same e-mail, sent once',

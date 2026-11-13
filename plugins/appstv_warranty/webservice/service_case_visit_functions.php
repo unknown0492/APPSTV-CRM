@@ -103,7 +103,8 @@ function appstv_case_visit_finish(){
         $staff = array_values( array_unique( array_filter( array_map( 'strval', $staff ), 'strlen' ) ) );
         if( count( $staff ) === 0 ){ throw new AppstvServiceRuleException( "Tick who went to the site." ); }
         foreach( $staff as $user_id ){
-            if( !appstv_case_is_staff( $user_id ) ){ throw new AppstvServiceRuleException( "One of the staff members ticked cannot be assigned to cases." ); }
+            $on_case = mysqli_num_rows( appstv_case_db( "SELECT 1 FROM service_case_staff WHERE case_id = " . (int) request( 'case_id' ) . " AND user_id = '" . escape_string( $user_id ) . "' LIMIT 1" ) ) > 0;
+            if( !$on_case && !appstv_case_is_staff( $user_id ) ){ throw new AppstvServiceRuleException( "One of the staff members ticked is not a visit technician." ); }
         }
 
         $result = (string) request( 'result' );
