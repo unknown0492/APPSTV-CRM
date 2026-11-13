@@ -491,3 +491,77 @@
 /* Finish visit: the theme caps SweetAlert bodies at 200px; this form uses the window height, no sideways scroll */
 .scv-popup .swal2-html-container { max-height: calc(100vh - 200px); overflow-x: hidden; overflow-y: auto; }
 .scv-form .d-flex > .form-control { min-width: 0; }
+
+/* =============================================
+   v1.0.27: stronger colours (white text on dark fills, dark text on pale fills: 4.5:1 or more)
+   ============================================= */
+
+/* Finish visit: solid dark blue (header button and the pill on the Visits tab) */
+.sc-btn-finish, .sc-pill.sc-pill-finish { background: #0b5cad; color: #fff; border: 1px solid #0b5cad !important; }
+.sc-btn-finish:hover, .sc-btn-finish:focus, .sc-pill.sc-pill-finish:hover, .sc-pill.sc-pill-finish:focus { background: #08467f; color: #fff; border-color: #08467f !important; }
+.sc-btn-finish i { color: inherit; }
+
+/* In the visit window / visit due today: dark gold */
+.badge-sc-window { background: #a16207; color: #fff; }
+.sc-text-window { color: #854d0e; }
+.sc-tile.is-warning { border-top-color: #ca8a04; }
+.scc-strip-warning { background: #a16207; color: #fff; }
+
+/* Needs another visit: darker orange strip so the white text reads well */
+.scc-strip-revisit { background: #c2410c; color: #fff; }
+
+/* Visited, not in the system, no warranty: pale amber with dark text */
+.badge-sc-amber { background: #fef3c7; color: #854d0e; }
+.sc-text-amber { color: #854d0e; }
+
+/* Wizard step 4: serial numbers (1.0.27) */
+.scw-sn-tools { display: flex; flex-wrap: wrap; gap: 10px; }
+.scw-sn-tools .btn { min-height: 44px; }
+.scw-sn-entry { display: flex; gap: 10px; }
+.scw-sn-entry .form-control { flex: 1 1 auto; min-width: 0; font-family: Consolas, "Courier New", monospace; letter-spacing: 0.04em; text-transform: uppercase; }
+.scw-sn-entry .form-control::placeholder { text-transform: none; letter-spacing: 0; font-family: inherit; }
+.scw-sn-entry .btn { flex: 0 0 auto; }
+.scw-sn-list { display: flex; flex-direction: column; gap: 8px; }
+.scw-sn-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #fff;
+    border: 1px solid #e4e6ef; border-left: 4px solid #a1a5b7; border-radius: 0.65rem;
+}
+.scw-sn-row.is-found { border-left-color: #1d8a52; }
+.scw-sn-row.is-missing, .scw-sn-row.is-error { border-left-color: #a16207; }
+.scw-sn-row.is-extra { border-color: #f1416c; border-left-color: #d9214e; background: #fff5f8; }
+.scw-sn-no {
+    flex: 0 0 auto; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 1rem; background: #f1f1f4; color: #3f4254;
+    font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; white-space: nowrap;
+}
+.scw-sn-main { flex: 1 1 auto; min-width: 0; }
+.scw-sn-serial { font-family: Consolas, "Courier New", monospace; font-weight: 700; font-size: 1rem; color: #181c32; word-break: break-all; }
+.scw-sn-sub { color: #5e6278; font-size: 0.88rem; margin-top: 2px; }
+.scw-sn-warn { color: #854d0e; font-size: 0.85rem; font-weight: 600; margin-top: 4px; display: flex; align-items: baseline; gap: 6px; }
+.scw-sn-warn i { color: inherit; }
+.scw-sn-side { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.scw-sn-x i { color: #5e6278; }
+.scw-sn-x:hover i { color: #d9214e; }
+.scw-sn-empty {
+    display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px dashed #dbdfe9; border-radius: 0.65rem; color: #5e6278;
+}
+.scw-sn-empty i { font-size: 1.6rem; color: #a1a5b7; }
+.scw-sn-info {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; margin-bottom: 10px;
+    border-radius: 0.65rem; background: #e1f3ff; color: #0b4f8a; font-size: 0.9rem;
+}
+.scw-sn-info > span { flex: 1 1 220px; min-width: 0; }
+.scw-sn-info i { color: inherit; }
+.scw-sn-info.is-warn { background: #fef3c7; color: #854d0e; }
+.scw-sn-info.is-danger { background: #fff5f8; color: #b42318; }
+
+@media (max-width: 575.98px) {
+    .scw-sn-tools .btn { flex: 1 1 100%; }
+    .scw-sn-row { flex-wrap: wrap; align-items: flex-start; }
+    .scw-sn-main { flex-basis: calc(100% - 50px); }
+    .scw-sn-side { flex-basis: 100%; justify-content: space-between; padding-left: 44px; }
+}
+
+/* Warranty badges (1.0.27): dark text on pale fills */
+.badge-sc-ok { background: #dcfce7; color: #166534; }
+.badge-sc-bad { background: #fee2e2; color: #b42318; }
+.badge-sc-ok i, .badge-sc-bad i, .badge-sc-amber i, .badge-sc-window i { color: inherit; }

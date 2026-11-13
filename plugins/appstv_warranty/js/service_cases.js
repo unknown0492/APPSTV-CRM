@@ -22,7 +22,7 @@ var SC = {
     listTimer : null,                                          // Pending list reload (search typing)
     listSeq : 0,                                               // Number of the latest list request (older answers dropped)
     STATUS : { open: 'Open', scheduled: 'Visit scheduled', visited: 'Visited', revisit: 'Needs another visit', closed: 'Closed' },
-    STATUS_BADGE : { open: 'badge-light-primary', scheduled: 'badge-light-info', visited: 'badge-light-warning', revisit: 'badge-sc-revisit', closed: 'badge-light' },
+    STATUS_BADGE : { open: 'badge-light-primary', scheduled: 'badge-light-info', visited: 'badge-sc-amber', revisit: 'badge-sc-revisit', closed: 'badge-light' },
     // Why another visit is needed (1.0.26, same keys as APPSTV_CASE_REVISIT_REASONS)
     REVISIT_REASONS : { part: 'Spare part needed', tools: 'More tools needed', not_available: 'Customer or room not available', senior: 'Needs a senior technician', other: 'Other' },
     PART_STATES : { needed: 'Needed', ordered: 'Ordered', arrived: 'Arrived' },
@@ -130,9 +130,9 @@ var SC = {
      * @returns {string}
      */
     warrantyBadge : function ( status ) {
-        if ( status === 'Active' || status === 'Active (Extended)' ) { return 'badge-light-success'; }
-        if ( status === 'Expired' ) { return 'badge-light-danger'; }
-        return 'badge-light-warning';
+        if ( status === 'Active' || status === 'Active (Extended)' ) { return 'badge-sc-ok'; }
+        if ( status === 'Expired' ) { return 'badge-sc-bad'; }
+        return 'badge-sc-amber';
     },
 
     // ── Events ──────────────────────────────────────────────────
@@ -371,7 +371,7 @@ var SC = {
         // ── Header ──
         var actions = '<button type="button" class="btn btn-sm btn-light" data-sc-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span class="d-none d-md-inline ms-1">History</span></button>';
         if ( c.status === 'open' || c.status === 'scheduled' || c.status === 'revisit' ) {
-            actions += '<button type="button" class="btn btn-sm btn-light-warning" data-sc-action="finish-visit"><i class="fa-solid fa-person-walking-arrow-right"></i><span class="ms-1">Finish visit' + ( nextNo > 1 ? ' ' + nextNo : '' ) + '</span></button>';
+            actions += '<button type="button" class="btn btn-sm sc-btn-finish" data-sc-action="finish-visit"><i class="fa-solid fa-person-walking-arrow-right"></i><span class="ms-1">Finish visit' + ( nextNo > 1 ? ' ' + nextNo : '' ) + '</span></button>';
         }
         if ( !closed ) { actions += '<button type="button" class="btn btn-sm btn-success" data-sc-action="close"><i class="fa-solid fa-flag-checkered"></i><span class="ms-1">Close case</span></button>'; }
         if ( closed || c.status === 'visited' ) { actions += '<button type="button" class="btn btn-sm btn-light-primary" data-sc-action="reopen"><i class="fa-solid fa-rotate-left"></i><span class="ms-1">Reopen</span></button>'; }
@@ -548,8 +548,8 @@ var SC = {
             return { badge: '', badgeClass: '', text: 'Starts in ' + wait + ' day' + ( wait > 1 ? 's' : '' ), textClass: 'text-muted', tileClass: '' };
         }
         var left = days( today, end );
-        return { badge: left === 0 ? 'Visit due today' : 'In the visit window', badgeClass: 'badge-light-warning', text: left === 0 ? 'Last day today' : left + ' day' + ( left > 1 ? 's' : '' ) + ' left',
-                 textClass: 'text-warning fw-semibold', tileClass: 'is-warning' };
+        return { badge: left === 0 ? 'Visit due today' : 'In the visit window', badgeClass: 'badge-sc-window', text: left === 0 ? 'Last day today' : left + ' day' + ( left > 1 ? 's' : '' ) + ' left',
+                 textClass: 'sc-text-window fw-semibold', tileClass: 'is-warning' };
     },
 
     /**
@@ -637,7 +637,7 @@ var SC = {
                   + ( when ? '<span class="badge badge-light-info">Planned · ' + e( when ) + '</span>' : '<span class="badge badge-light">Not planned yet</span>' ) + '</div>'
                   + '<div class="d-flex flex-wrap gap-2 mt-2">'
                   + '<button type="button" class="btn btn-sm sc-pill" data-sc-action="edit-visit-tab"><i class="fa-regular fa-calendar-plus"></i>' + ( c.visit_date ? 'Change date' : 'Plan visit ' + nextNo ) + '</button>'
-                  + '<button type="button" class="btn btn-sm sc-pill" data-sc-action="finish-visit"><i class="fa-solid fa-person-walking-arrow-right"></i>Finish visit ' + nextNo + '</button></div>'
+                  + '<button type="button" class="btn btn-sm sc-pill sc-pill-finish" data-sc-action="finish-visit"><i class="fa-solid fa-person-walking-arrow-right"></i>Finish visit ' + nextNo + '</button></div>'
                   + '</div></div>';
         }
         if ( visits.length === 0 ) {
@@ -648,7 +648,7 @@ var SC = {
             var staff = $.map( v.staff, function ( s ) { return s.name || s.user_id; } ).join( ', ' );
             html += '<div class="sc-visit ' + ( fixed ? 'is-fixed' : 'is-revisit' ) + '"><div class="sc-visit-no">' + v.visit_no + '</div><div class="sc-visit-body">'
                   + '<div class="sc-visit-head"><span class="sc-visit-title">Visit ' + v.visit_no + ' · ' + e( SC.showDate( v.visited_on ) ) + '</span>'
-                  + ( fixed ? '<span class="badge badge-light-success"><i class="fa-solid fa-check me-1 text-success"></i>Fixed</span>'
+                  + ( fixed ? '<span class="badge badge-sc-ok"><i class="fa-solid fa-check me-1"></i>Fixed</span>'
                             : '<span class="badge badge-sc-revisit"><i class="fa-solid fa-rotate me-1"></i>Needs another visit</span>' ) + '</div>'
                   + ( staff ? '<div class="sc-visit-line"><i class="fa-solid fa-user-gear"></i>' + e( staff ) + '</div>' : '' );
             if ( !fixed ) {
@@ -766,16 +766,16 @@ var SC = {
         var html = '<div class="sc-tv">';
         html += '<div class="d-flex flex-wrap align-items-center gap-2"><span class="font-monospace fw-bold fs-5">' + SC.esc( tv.serial_number ) + '</span>';
         if ( ch === null ) {
-            html += '<span class="badge badge-light-warning">Not in the system</span></div>';
+            html += '<span class="badge badge-sc-amber">Not in the system</span></div>';
         } else {
             html += '<span class="badge ' + SC.warrantyBadge( ch.warranty_status ) + '">' + SC.esc( ch.warranty_status ) + '</span>';
-            if ( tv.pwrp_id ) { html += '<span class="badge badge-light-success">Service recorded on this case</span>'; }
+            if ( tv.pwrp_id ) { html += '<span class="badge badge-sc-ok">Service recorded on this case</span>'; }
             html += '</div><div class="text-muted fs-7">' + SC.esc( ch.product_name );
             if ( ch.warranty_expiry ) { html += ' · warranty until ' + SC.esc( SC.showDate( ch.warranty_expiry ) ) + ( ch.extended_expiry ? ', extended until ' + SC.esc( SC.showDate( ch.extended_expiry ) ) : '' ); }
             html += '</div>';
             if ( ch.role === 'replacement' ) { html += '<div class="fs-7 text-muted">Replacement TV under the warranty of the original TV</div>'; }
-            if ( ch.customer_id && ch.customer_id !== c.customer_id ) { html += '<div class="fs-7 text-warning">Sold to ' + SC.esc( ch.customer_name ) + ', not to this customer</div>'; }
-            if ( !ch.is_current ) { html += '<div class="fs-7 text-warning">Already replaced by ' + SC.esc( ch.current_serial_number ) + '</div>'; }
+            if ( ch.customer_id && ch.customer_id !== c.customer_id ) { html += '<div class="fs-7 sc-text-amber">Sold to ' + SC.esc( ch.customer_name ) + ', not to this customer</div>'; }
+            if ( !ch.is_current ) { html += '<div class="fs-7 sc-text-amber">Already replaced by ' + SC.esc( ch.current_serial_number ) + '</div>'; }
             var events = ch.events.slice( -3 );
             if ( events.length ) {
                 html += '<div class="sc-tv-events">';

@@ -1,11 +1,14 @@
 "use strict";
 
 /* =============================================
-   service_case_wizard.js (v1.0.21)
+   service_case_wizard.js (v1.0.27)
    Plugin: appstv_warranty - "Open a service case" wizard and the Drafts list of the Service Cases page
 
-   Steps (this version): 1 Customer and complainant, 2 Which TVs, 3 The problem, 6 Who goes and when.
-   Steps 4 (serial numbers) and 5 (photos / videos) are added by later versions: SCW.STEPS lists the steps shown.
+   Steps: 1 Customer and complainant, 2 Which TVs, 3 The problem, 4 Serial numbers (1.0.27), 5 Photos / videos,
+   6 Who goes and when. SCW.STEPS lists the steps shown.
+   Serial numbers: camera (AppstvScanner, continuous), photos of barcodes (several at once, read by the server),
+   barcode gun or typing / pasting. Each serial is looked up at once (model, owner, real warranty); the warranty
+   answer and the models are filled from them when they were not known.
 
    Drafts: saved on the server a few seconds after a change and on every step change (shared with everyone who
    handles cases); a copy of unsaved answers is kept in this browser (localStorage) in case the connection drops.
@@ -19,6 +22,7 @@ var SCW = {
         { id: 1, title: 'Customer' },
         { id: 2, title: 'TVs' },
         { id: 3, title: 'Problem' },
+        { id: 4, title: 'Serials' },
         { id: 5, title: 'Photos' },
         { id: 6, title: 'Who and when' }
     ],
@@ -43,6 +47,10 @@ var SCW = {
     contactsTimer : null,                                      // Pending complainant search
     opening : false,                                           // OPEN CASE in progress
     gallery : null,                                            // Photos / videos of the draft (SCMedia)
+    snInfo : {},                                               // serial_number => { state: checking | found | missing | error, tv, count } (1.0.27)
+    snNote : '',                                               // What the serials filled in (shown on step 4)
+    snModels : false,                                          // The models were filled from the serials (more are added as found)
+    SN_PHOTO_PX : 2000,                                        // Photos of barcodes are made this size (long side) before upload
 
     // ── Start ───────────────────────────────────────────────
 
@@ -244,6 +252,25 @@ var SCW = {
         // Leaving the wizard with the window's own close / Esc is not possible (static backdrop); browser close keeps the local copy
         $m.on( 'hidden.bs.modal', function () { clearTimeout( SCW.saveTimer ); } );
 
+        // Serial numbers (1.0.27)
+        $( '#scw_sn_scan' ).on( 'click', SCW.scanSerials );
+        $( '#scw_sn_photos' ).on( 'click', function () { $( '#scw_sn_files' ).val( '' ).trigger( 'click' ); } );
+        $( '#scw_sn_files' ).on( 'change', function () { SCW.readBarcodePhotos( Array.prototype.slice.call( this.files || [] ) ); } );
+        AppstvScanner.bindInput( $( '#scw_sn_input' ), function ( values ) { SCW.addSerials( values, true ); } );
+        $( '#scw_sn_add' ).on( 'click', function () {
+            var $in = $( '#scw_sn_input' );
+            if ( $in.val().trim() === '' ) { $in.trigger( 'focus' ); return; }
+            SCW.addSerials( AppstvScanner.splitMany( $in.val() ), true );
+            $in.val( '' ).trigger( 'focus' );
+        } );
+        $( '#scw_sn_list' ).on( 'click', '[data-scw-sn-remove]', function () { SCW.removeSerial( $( this ).attr( 'data-scw-sn-remove' ) ); } );
+        $( '#scw_sn_note' ).on( 'click', '[data-scw-sn-warranty]', function () {
+            SCW.answers.warranty = $( this ).attr( 'data-scw-sn-warranty' );
+            SCW.snNote = 'Warranty answer set to “' + SCW.WARRANTY[ SCW.answers.warranty ] + '” from the serial numbers.';
+            SCW.renderTvs();
+            SCW.markDirty();
+        } );
+
         // Drafts list
         $( '#sc_drafts_list' ).on( 'click', '[data-draft-continue]', function () { SCW.openDraft( +$( this ).attr( 'data-draft-continue' ), SCW.readBackup() ); } );
         $( '#sc_drafts_list' ).on( 'click', '[data-draft-delete]', function () { SCW.deleteDraft( +$( this ).attr( 'data-draft-delete' ), $( this ).attr( 'data-label' ) ); } );
@@ -313,6 +340,9 @@ var SCW = {
             if ( !a.warranty ) { errors.push( 'Choose the warranty answer.' ); }
         }
         if ( id === 3 && !a.problem ) { errors.push( 'Describe the problem in their own words.' ); }
+        if ( id === 4 && a.serials.length > a.tv_count ) {
+            errors.push( 'There are more serial numbers (' + a.serials.length + ') than TVs (' + a.tv_count + '). Go back to step 2 to raise the number of TVs, or remove serials.' );
+        }
         if ( id === 6 ) {
             if ( a.staff.length === 0 ) { errors.push( 'Assign the case to at least one staff member.' ); }
             if ( !a.visit_from || !a.visit_to ) { errors.push( 'Enter the visit window (from and to).' ); }
@@ -347,7 +377,12 @@ var SCW = {
         $( '#scw_visit_to' ).val( a.visit_to ).attr( 'min', a.visit_from || '' );
         $( '#scw_channels' ).html( SCW.chipsHtml( 'channels', SCW.CHANNELS, a.channels, { call: 'fa-phone', whatsapp: 'fa-brands fa-whatsapp', email: 'fa-envelope', sms: 'fa-comment-sms' } ) );
         $( '#scw_problem_types' ).html( SCW.chipsHtml( 'problem_types', SCW.PROBLEMS, a.problem_types, {} ) );
+        SCW.snInfo = {};
+        SCW.snNote = '';
+        $( '#scw_sn_input' ).val( '' );
+        $( '#scw_sn_status' ).text( '' );
         SCW.renderTvs();
+        SCW.snModels = false;
         SCW.renderStaff();
     },
 
@@ -425,6 +460,266 @@ var SCW = {
                  + ( SCW.WARRANTY_HINT[ value ] ? '<span class="text-muted fs-8">' + SC.esc( SCW.WARRANTY_HINT[ value ] ) + ( disabled ? ' (needs more than one TV)' : '' ) + '</span>' : '' )
                  + '</span></button>';
         } ).join( '' ) );
+        SCW.renderSerials();                                   // Its count depends on the number of TVs
+    },
+
+    // ── Serial numbers (step 4, 1.0.27) ─────────────────────
+
+    /**
+     * @description Adds serial numbers (typed, pasted, scanned or read from photos) and looks each one up
+     * @param {Array} raws - Raw texts
+     * @param {boolean} tell - Tell about repeats / invalid ones
+     * @returns {number} How many were added
+     */
+    addSerials : function ( raws, tell ) {
+        var a = SCW.answers;
+        var added = 0, repeats = [], invalid = 0;
+        $.each( raws, function ( i, raw ) {
+            var serial = AppstvScanner.cleanSerial( raw );
+            if ( serial === '' ) { invalid++; return; }
+            if ( SCW.serialAt( serial ) !== -1 ) { repeats.push( serial ); return; }
+            if ( a.serials.length >= 500 ) { return false; }
+            a.serials.push( { product_sn_id: '', serial_number: serial, label: '' } );
+            added++;
+            SCW.lookupSerial( serial, '' );
+        } );
+        if ( tell && repeats.length ) { showSimpleToast( 'info', repeats.join( ', ' ) + ( repeats.length > 1 ? ' are' : ' is' ) + ' already on the list.' ); }
+        if ( tell && invalid ) { showSimpleToast( 'warning', 'A serial number has letters and digits only (up to 50).' ); }
+        if ( added ) { SCW.renderSerials(); SCW.markDirty(); }
+        return added;
+    },
+
+    /**
+     * @description Position of a serial number in the answers
+     * @param {string} serial - Serial number
+     * @returns {number} Index, -1 when it is not there
+     */
+    serialAt : function ( serial ) {
+        for ( var i = 0; i < SCW.answers.serials.length; i++ ) { if ( SCW.answers.serials[ i ].serial_number === serial ) { return i; } }
+        return -1;
+    },
+
+    /**
+     * @description Removes a serial number
+     * @param {string} serial - Serial number
+     * @returns {void}
+     */
+    removeSerial : function ( serial ) {
+        var at = SCW.serialAt( serial );
+        if ( at === -1 ) { return; }
+        SCW.answers.serials.splice( at, 1 );
+        delete SCW.snInfo[ serial ];
+        SCW.snNote = '';
+        SCW.fillFromSerials( null );                           // The rest may now tell the warranty
+        SCW.renderSerials();
+        SCW.markDirty();
+    },
+
+    /**
+     * @description Looks a serial number up (model, owner, real warranty); when two TVs carry it, the one sold to this
+     *              customer is taken. Fills the warranty answer / models from the serials when they were not known.
+     * @param {string} serial - Serial number
+     * @param {string} productSnId - The TV already chosen ('' = by serial number)
+     * @returns {void}
+     */
+    lookupSerial : function ( serial, productSnId ) {
+        SCW.snInfo[ serial ] = { state: 'checking', tv: null, count: 0 };
+        var data = productSnId ? { product_sn_id: productSnId } : { serial_number: serial };
+        SC.post( $.extend( { what_do_you_want: 'appstv_case_find_tv' }, data ) ).then( function ( info ) {
+            var at = SCW.serialAt( serial );
+            if ( at === -1 ) { return; }                       // Removed meanwhile
+            var tvs = info.data.tvs || [];
+            var own = SCW.answers.customer ? tvs.filter( function ( t ) { return t.customer_id === SCW.answers.customer.customer_id; } ) : [];
+            var tv = own[ 0 ] || tvs[ 0 ] || null;
+            SCW.snInfo[ serial ] = { state: tv ? 'found' : 'missing', tv: tv, count: tvs.length };
+            var sn = SCW.answers.serials[ at ];
+            var id = tv ? tv.product_sn_id : '';
+            var label = tv ? ( tv.product_name || 'TV' ) + ' · ' + tv.warranty_status : 'Not in the system';
+            if ( sn.product_sn_id !== id || sn.label !== label ) {
+                sn.product_sn_id = id;
+                sn.label = label;
+                SCW.markDirty();
+            }
+            SCW.fillFromSerials( tv );
+            SCW.renderSerials();
+        } ).catch( function () {
+            if ( SCW.serialAt( serial ) === -1 ) { return; }
+            SCW.snInfo[ serial ] = { state: 'error', tv: null, count: 0 };
+            SCW.renderSerials();
+        } );
+    },
+
+    /**
+     * @description Warranty answer the looked-up serials give (all of them must be known)
+     * @returns {string} under | out | mixed, '' when it cannot be told
+     */
+    serialWarranty : function () {
+        var a = SCW.answers, under = 0, out = 0;
+        $.each( a.serials, function ( i, sn ) {
+            var x = SCW.snInfo[ sn.serial_number ];
+            var st = ( x && x.tv ) ? x.tv.warranty_status : '';
+            if ( st === 'Active' || st === 'Active (Extended)' ) { under++; } else if ( st === 'Expired' ) { out++; }
+        } );
+        if ( a.serials.length === 0 || under + out !== a.serials.length ) { return ''; }
+        if ( under && out ) { return a.tv_count > 1 ? 'mixed' : ''; }
+        return under ? 'under' : 'out';
+    },
+
+    /**
+     * @description After a lookup: sets the warranty answer when it was not known, and the model when it was "Not sure"
+     * @param {object|null} tv - The TV found
+     * @returns {void}
+     */
+    fillFromSerials : function ( tv ) {
+        var a = SCW.answers, changed = [];
+        var w = SCW.serialWarranty();
+        if ( w && ( a.warranty === '' || a.warranty === 'unknown' ) ) {
+            a.warranty = w;
+            changed.push( 'the warranty answer (“' + SCW.WARRANTY[ w ] + '”)' );
+        }
+        var known = tv && tv.product_id && ( SCW.models || [] ).some( function ( m ) { return m.product_id === tv.product_id; } );
+        if ( known && ( a.models.length === 0 || ( a.models.length === 1 && a.models[ 0 ] === 'unsure' ) ) ) {
+            a.models = [ tv.product_id ];
+            changed.push( 'the TV model' );
+            SCW.snModels = true;
+        } else if ( known && SCW.snModels && a.models.indexOf( tv.product_id ) === -1 ) {
+            a.models.push( tv.product_id );                    // Models came from the serials: add this one too
+            changed.push( 'the TV models' );
+        }
+        if ( changed.length ) {
+            SCW.snNote = 'Filled in from the serial numbers: ' + changed.join( ' and ' ) + '. You can change it on step 2.';
+            SCW.renderTvs();
+            SCW.markDirty();
+        }
+    },
+
+    /**
+     * @description Draws the list of serial numbers, the count and the warranty hint of step 4
+     * @returns {void}
+     */
+    renderSerials : function () {
+        var a = SCW.answers;
+        if ( !a ) { return; }
+        var e = SC.esc, n = a.serials.length;
+        var mine = a.customer ? a.customer.customer_id : '';
+        $( '#scw_sn_count' ).html( n === 0 ? '' : ( n > a.tv_count
+            ? '<span class="text-danger fw-semibold">' + n + ' serials, but ' + a.tv_count + ' TV' + ( a.tv_count > 1 ? 's' : '' ) + '</span>'
+            : n + ' of ' + a.tv_count + ' TV' + ( a.tv_count > 1 ? 's' : '' ) ) );
+
+        $.each( a.serials, function ( i, sn ) {             // Serials of a draft (or from the Warranty page): look them up once
+            if ( !SCW.snInfo[ sn.serial_number ] ) { SCW.lookupSerial( sn.serial_number, sn.product_sn_id ); }
+        } );
+        var html = $.map( a.serials, function ( sn, i ) {
+            var x = SCW.snInfo[ sn.serial_number ];
+            var tv = x.tv, sub = '', badge = '', warn = '', cls = 'is-' + x.state;
+            if ( x.state === 'checking' ) { sub = '<span class="spinner-border spinner-border-sm me-2"></span>Checking…'; }
+            if ( x.state === 'error' ) { sub = 'Could not be checked (connection). It is kept; remove it and add it again to check it.'; }
+            if ( x.state === 'missing' ) {
+                sub = 'Not found in the system. It is kept as typed: check it on site.';
+                badge = '<span class="badge badge-sc-amber">Not in the system</span>';
+            }
+            if ( tv ) {
+                sub = e( tv.product_name || 'TV' ) + ( tv.customer_name ? ' · sold to ' + e( tv.customer_name ) + ( tv.invoice_no ? ' (' + e( tv.invoice_no ) + ')' : '' ) : ' · no sale recorded' );
+                var until = tv.extended_expiry && tv.warranty_status === 'Active (Extended)' ? tv.extended_expiry : tv.warranty_expiry;
+                badge = '<span class="badge ' + SC.warrantyBadge( tv.warranty_status ) + '">' + e( tv.warranty_status === 'No Warranty Found' ? 'No warranty found' : tv.warranty_status )
+                      + ( until ? ' · until ' + e( SC.showDate( until ) ) : '' ) + '</span>';
+                if ( mine && tv.customer_id && tv.customer_id !== mine ) { warn += '<div class="scw-sn-warn"><i class="fa-solid fa-triangle-exclamation"></i>Sold to another customer</div>'; }
+                if ( !tv.is_current ) { warn += '<div class="scw-sn-warn"><i class="fa-solid fa-triangle-exclamation"></i>Already replaced by ' + e( tv.current_serial_number ) + '</div>'; }
+                if ( x.count > 1 ) { warn += '<div class="scw-sn-warn"><i class="fa-solid fa-circle-info"></i>' + x.count + ' TVs carry this serial number; the one ' + ( mine && tv.customer_id === mine ? 'sold to this customer' : 'found first' ) + ' is used</div>'; }
+            }
+            var no = ( a.split && a.tv_count > 1 ) ? 'TV ' + ( i + 1 ) : String( i + 1 );
+            return '<div class="scw-sn-row ' + cls + ( i >= a.tv_count ? ' is-extra' : '' ) + '">'
+                 + '<div class="scw-sn-no">' + no + '</div>'
+                 + '<div class="scw-sn-main"><div class="scw-sn-serial">' + e( sn.serial_number ) + '</div><div class="scw-sn-sub">' + sub + '</div>' + warn + '</div>'
+                 + '<div class="scw-sn-side">' + badge
+                 + '<button type="button" class="btn btn-icon btn-sm btn-light scw-sn-x" data-scw-sn-remove="' + e( sn.serial_number ) + '" aria-label="Remove ' + e( sn.serial_number ) + '"><i class="fa-solid fa-xmark"></i></button></div>'
+                 + '</div>';
+        } ).join( '' );
+        $( '#scw_sn_list' ).html( html || '<div class="scw-sn-empty"><i class="fa-solid fa-barcode"></i><span>No serial numbers yet. They can also be added on site, on the TVs tab of the case.</span></div>' );
+
+        // What the serials say about the warranty, and where the serials go
+        var note = '';
+        if ( SCW.snNote ) { note += '<div class="scw-sn-info"><i class="fa-solid fa-wand-magic-sparkles"></i><span>' + e( SCW.snNote ) + '</span></div>'; }
+        var w = SCW.serialWarranty();
+        if ( w && a.warranty && a.warranty !== w && a.warranty !== 'unknown' ) {
+            note += '<div class="scw-sn-info is-warn"><i class="fa-solid fa-triangle-exclamation"></i><span>The serial numbers say “' + e( SCW.WARRANTY[ w ] ) + '”, the answer on step 2 is “' + e( SCW.WARRANTY[ a.warranty ] ) + '”.</span>'
+                  + '<button type="button" class="btn btn-sm sc-pill" data-scw-sn-warranty="' + w + '">Use “' + e( SCW.WARRANTY[ w ] ) + '”</button></div>';
+        }
+        if ( a.split && a.tv_count > 1 && n > 0 && n < a.tv_count ) {
+            note += '<div class="scw-sn-info"><i class="fa-solid fa-circle-info"></i><span>The serials go to TV cases 1' + ( n > 1 ? '–' + n : '' ) + ' in this order; TV case' + ( a.tv_count - n > 1 ? 's ' + ( n + 1 ) + '–' + a.tv_count + ' show' : ' ' + a.tv_count + ' shows' ) + ' “Serial pending”.</span></div>';
+        }
+        if ( n > a.tv_count ) {
+            note += '<div class="scw-sn-info is-danger"><i class="fa-solid fa-circle-exclamation"></i><span>There are more serial numbers than TVs. Raise the number of TVs on step 2, or remove serials.</span></div>';
+        }
+        $( '#scw_sn_note' ).html( note );
+    },
+
+    /**
+     * @description Opens the camera scanner; it stays open and every new code is added (repeats are refused)
+     * @returns {void}
+     */
+    scanSerials : function () {
+        AppstvScanner.open( {
+            title : 'Scan the serial numbers',
+            continuous : true,
+            onScan : function ( serial ) { return SCW.addSerials( [ serial ], false ) > 0; },
+            onClose : function ( count ) { if ( count ) { showSimpleToast( 'success', count + ' serial number' + ( count > 1 ? 's' : '' ) + ' added.' ); } }
+        } );
+    },
+
+    /**
+     * @description Reads the barcodes of several photos, one after the other (each is made smaller and sent as JPEG)
+     * @param {File[]} files - Photos chosen
+     * @returns {void}
+     */
+    readBarcodePhotos : function ( files ) {
+        files = files.filter( function ( f ) { return /^image\//.test( f.type ) || /\.(jpe?g|png|webp|heic|heif)$/i.test( f.name ); } );
+        if ( files.length === 0 ) { return; }
+        var $btn = $( '#scw_sn_photos' ).prop( 'disabled', true );
+        var $status = $( '#scw_sn_status' );
+        var found = 0, failed = [];
+        var next = function ( i ) {
+            if ( i >= files.length ) {
+                $btn.prop( 'disabled', false );
+                $status.text( '' );
+                var text = found + ' serial number' + ( found === 1 ? '' : 's' ) + ' added from ' + files.length + ' photo' + ( files.length > 1 ? 's' : '' ) + '.';
+                if ( failed.length ) { text += ' No readable barcode on: ' + failed.join( ', ' ) + '. Type those serial numbers, or take a closer photo.'; }
+                showSimpleToast( failed.length ? 'warning' : 'success', text );
+                return;
+            }
+            $status.html( '<span class="spinner-border spinner-border-sm me-2"></span>Reading photo ' + ( i + 1 ) + ' of ' + files.length + '…' );
+            SCW.barcodeJpeg( files[ i ] ).then( function ( blob ) {
+                return new Promise( function ( resolve, reject ) { AppstvScanner.decodeOnServer( blob, 'barcode.jpg', resolve, reject ); } );
+            } ).then( function ( serial ) {
+                found += SCW.addSerials( [ serial ], true );
+            } ).catch( function () {
+                failed.push( files[ i ].name );
+            } ).then( function () { next( i + 1 ); } );
+        };
+        next( 0 );
+    },
+
+    /**
+     * @description A photo as a JPEG of at most SN_PHOTO_PX on the long side (phone photos are too large to upload)
+     * @param {File} file - The photo
+     * @returns {Promise<Blob>}
+     */
+    barcodeJpeg : function ( file ) {
+        return new Promise( function ( resolve, reject ) {
+            var url = URL.createObjectURL( file );
+            var img = new Image();
+            img.onload = function () {
+                var scale = Math.min( 1, SCW.SN_PHOTO_PX / Math.max( img.naturalWidth, img.naturalHeight ) );
+                var canvas = document.createElement( 'canvas' );
+                canvas.width = Math.round( img.naturalWidth * scale );
+                canvas.height = Math.round( img.naturalHeight * scale );
+                canvas.getContext( '2d' ).drawImage( img, 0, 0, canvas.width, canvas.height );
+                URL.revokeObjectURL( url );
+                canvas.toBlob( function ( blob ) { if ( blob ) { resolve( blob ); } else { reject( 'The photo cannot be read.' ); } }, 'image/jpeg', 0.9 );
+            };
+            img.onerror = function () { URL.revokeObjectURL( url ); reject( 'The photo cannot be read.' ); };
+            img.src = url;
+        } );
     },
 
     /**
@@ -510,6 +805,7 @@ var SCW = {
         var at = list.indexOf( value );
         if ( at === -1 ) { list.push( value ); } else { list.splice( at, 1 ); }
         if ( field === 'models' ) {
+            SCW.snModels = false;                              // Chosen by hand from now on
             // "Not sure" and real models exclude each other
             if ( value === 'unsure' && at === -1 ) { SCW.answers.models = [ 'unsure' ]; }
             if ( value !== 'unsure' ) { SCW.answers.models = SCW.answers.models.filter( function ( m ) { return m !== 'unsure'; } ); }

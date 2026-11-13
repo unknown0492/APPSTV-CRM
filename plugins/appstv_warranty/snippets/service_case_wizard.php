@@ -146,6 +146,31 @@
                     </div>
                 </div>
 
+                <!-- STEP 4: serial numbers (optional, 1.0.27): camera, photos of barcodes, barcode gun or typing -->
+                <div class="scw-step d-none" data-step="4">
+                    <div class="scw-block">
+                        <div class="scw-block-title">Serial numbers <span class="text-muted fw-normal fs-7">(optional, can also be added later on site)</span></div>
+                        <div class="scw-sn-tools">
+                            <button type="button" class="btn btn-primary" id="scw_sn_scan"><i class="fa-solid fa-camera"></i> Scan with camera</button>
+                            <button type="button" class="btn btn-light-primary" id="scw_sn_photos"><i class="fa-regular fa-images"></i> Photos of barcodes</button>
+                            <input type="file" id="scw_sn_files" class="d-none" accept="image/*" multiple />
+                        </div>
+                        <label class="form-label mt-5" for="scw_sn_input">Or type the serial number <span class="text-muted fw-normal">(Enter after each one; several can be pasted at once)</span></label>
+                        <div class="scw-sn-entry">
+                            <input type="text" id="scw_sn_input" class="form-control form-control-solid" maxlength="2000" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. 10250S26040001" />
+                            <button type="button" class="btn btn-light-primary" id="scw_sn_add"><i class="fa-solid fa-plus"></i> Add</button>
+                        </div>
+                        <div class="form-text" id="scw_sn_status" aria-live="polite"></div>
+                    </div>
+                    <div class="scw-block">
+                        <div class="scw-block-title d-flex flex-wrap align-items-baseline justify-content-between gap-2">
+                            <span>Added</span><span class="text-muted fw-normal fs-7" id="scw_sn_count"></span>
+                        </div>
+                        <div id="scw_sn_note"></div>
+                        <div class="scw-sn-list" id="scw_sn_list"></div>
+                    </div>
+                </div>
+
                 <!-- STEP 5: photos and videos the customer shared (optional) -->
                 <div class="scw-step d-none" data-step="5">
                     <div class="scw-block">
