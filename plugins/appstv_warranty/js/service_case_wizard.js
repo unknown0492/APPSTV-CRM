@@ -50,7 +50,6 @@ var SCW = {
     snInfo : {},                                               // serial_number => { state: checking | found | missing | error, tv, count } (1.0.27)
     snNote : '',                                               // What the serials filled in (shown on step 4)
     snModels : false,                                          // The models were filled from the serials (more are added as found)
-    SN_PHOTO_PX : 2000,                                        // Photos of barcodes are made this size (long side) before upload
 
     // ── Start ───────────────────────────────────────────────
 
@@ -668,7 +667,8 @@ var SCW = {
     },
 
     /**
-     * @description Reads the barcodes of several photos, one after the other (each is made smaller and sent as JPEG)
+     * @description Reads the barcodes of several photos, one after the other. Each photo first opens the crop / rotate /
+     *              zoom editor (1.0.30), the edited picture is read by the server decoder. Closing the editor skips it.
      * @param {File[]} files - Photos chosen
      * @returns {void}
      */
@@ -677,49 +677,37 @@ var SCW = {
         if ( files.length === 0 ) { return; }
         var $btn = $( '#scw_sn_photos' ).prop( 'disabled', true );
         var $status = $( '#scw_sn_status' );
-        var found = 0, failed = [];
+        var found = 0, failed = [], skipped = 0;
         var next = function ( i ) {
             if ( i >= files.length ) {
                 $btn.prop( 'disabled', false );
                 $status.text( '' );
+                if ( skipped === files.length ) { return; }
                 var text = found + ' serial number' + ( found === 1 ? '' : 's' ) + ' added from ' + files.length + ' photo' + ( files.length > 1 ? 's' : '' ) + '.';
-                if ( failed.length ) { text += ' No readable barcode on: ' + failed.join( ', ' ) + '. Type those serial numbers, or take a closer photo.'; }
+                if ( skipped ) { text += ' ' + skipped + ' skipped.'; }
+                if ( failed.length ) { text += ' No readable barcode on: ' + failed.join( ', ' ) + '. Crop closer to the barcode, or type those serial numbers.'; }
                 showSimpleToast( failed.length ? 'warning' : 'success', text );
                 return;
             }
-            $status.html( '<span class="spinner-border spinner-border-sm me-2"></span>Reading photo ' + ( i + 1 ) + ' of ' + files.length + '…' );
-            SCW.barcodeJpeg( files[ i ] ).then( function ( blob ) {
-                return new Promise( function ( resolve, reject ) { AppstvScanner.decodeOnServer( blob, 'barcode.jpg', resolve, reject ); } );
-            } ).then( function ( serial ) {
-                found += SCW.addSerials( [ serial ], true );
+            var file = files[ i ];
+            $status.text( 'Photo ' + ( i + 1 ) + ' of ' + files.length + ': crop it to the barcode…' );
+            SCMedia.decode( file ).then( function ( canvas ) {
+                return new Promise( function ( resolve ) {
+                    SCMEditor.open( canvas, 0, function ( blob ) { resolve( blob ); }, function () { resolve( null ); },
+                                    'Crop to the barcode' + ( files.length > 1 ? ' (' + ( i + 1 ) + ' of ' + files.length + ')' : '' ) );
+                } );
+            }, function () {
+                throw 'unreadable';                            // e.g. HEIC the browser cannot show
+            } ).then( function ( blob ) {
+                if ( blob === null ) { skipped++; return null; }
+                $status.html( '<span class="spinner-border spinner-border-sm me-2"></span>Reading the barcode of photo ' + ( i + 1 ) + ' of ' + files.length + '…' );
+                return new Promise( function ( resolve, reject ) { AppstvScanner.decodeOnServer( blob, 'barcode.jpg', resolve, reject ); } )
+                    .then( function ( serial ) { found += SCW.addSerials( [ serial ], true ); } );
             } ).catch( function () {
-                failed.push( files[ i ].name );
+                failed.push( file.name );
             } ).then( function () { next( i + 1 ); } );
         };
         next( 0 );
-    },
-
-    /**
-     * @description A photo as a JPEG of at most SN_PHOTO_PX on the long side (phone photos are too large to upload)
-     * @param {File} file - The photo
-     * @returns {Promise<Blob>}
-     */
-    barcodeJpeg : function ( file ) {
-        return new Promise( function ( resolve, reject ) {
-            var url = URL.createObjectURL( file );
-            var img = new Image();
-            img.onload = function () {
-                var scale = Math.min( 1, SCW.SN_PHOTO_PX / Math.max( img.naturalWidth, img.naturalHeight ) );
-                var canvas = document.createElement( 'canvas' );
-                canvas.width = Math.round( img.naturalWidth * scale );
-                canvas.height = Math.round( img.naturalHeight * scale );
-                canvas.getContext( '2d' ).drawImage( img, 0, 0, canvas.width, canvas.height );
-                URL.revokeObjectURL( url );
-                canvas.toBlob( function ( blob ) { if ( blob ) { resolve( blob ); } else { reject( 'The photo cannot be read.' ); } }, 'image/jpeg', 0.9 );
-            };
-            img.onerror = function () { URL.revokeObjectURL( url ); reject( 'The photo cannot be read.' ); };
-            img.src = url;
-        } );
     },
 
     /**
