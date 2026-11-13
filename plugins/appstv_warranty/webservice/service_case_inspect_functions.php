@@ -17,6 +17,9 @@
  *
  * Answering a step again clears the steps after it. Once the repair is in the warranty records the inspection is
  * locked; waiting_part / revisit can answer the repair step again on the next visit.
+ *
+ * 1.0.33: "To be taken to the office" needs the customer's consent (step 'consent'): a finger signature under the
+ * exact sentence shown on the phone. The TV is then "At the office" and the inspection is locked.
  */
 
 define( 'APPSTV_INSPECT_STEPS', array( 'warranty', 'outside', 'open_here', 'inside', 'repair' ) );   // Order ('paid' follows its cause)
@@ -26,6 +29,7 @@ define( 'APPSTV_INSPECT_RESULTS', array(
     'repaired'     => 'Repaired on site',
     'waiting_part' => 'Waiting for a spare part',
     'to_office'    => 'To be taken to the office',
+    'at_office'    => 'At the office',                           // 1.0.33: consent signed, TV taken
     'revisit'      => 'Needs another visit'
 ) );
 define( 'APPSTV_INSPECT_NO_OPEN', array(
@@ -36,6 +40,8 @@ define( 'APPSTV_INSPECT_NO_OPEN', array(
 ) );
 define( 'APPSTV_INSPECT_PURPOSES', array( 'outside_damage', 'inside_liquid', 'working' ) );
 define( 'APPSTV_INSPECT_NOTE_MAX', 2000 );
+define( 'APPSTV_CONSENT_TITLES', array( 'Mr.', 'Ms.', 'Mrs.', 'Dr.', '' ) );   // '' = no title (1.0.33)
+define( 'APPSTV_CONSENT_MAX_BYTES', 3 * 1024 * 1024 );                         // Largest signature picture sent
 
 
 /**
@@ -126,6 +132,16 @@ function appstv_case_inspect_clear_after( $r, $step ){
  */
 function appstv_case_inspect_item( $r ){
     list( $next, $result ) = appstv_case_inspect_flow( $r );
+    $consent = null;                                          // 1.0.33: the customer agreed the TV is taken
+    if( (string) $r[ 'consent_id' ] !== '' ){
+        $result = 'at_office';
+        $row = mysqli_fetch_assoc( appstv_case_db( "SELECT * FROM service_case_consents WHERE id = " . (int) $r[ 'consent_id' ] ) );
+        if( $row !== null ){
+            $consent = array( 'id' => (int) $row[ 'id' ], 'title' => $row[ 'title' ], 'signer_name' => $row[ 'signer_name' ], 'staff_name' => $row[ 'staff_name' ],
+                              'tv_text' => $row[ 'tv_text' ], 'serial_number' => $row[ 'serial_number' ], 'statement' => $row[ 'statement' ],
+                              'shown_at' => $row[ 'shown_at' ], 'signed_on' => $row[ 'signed_on' ], 'media_id' => (int) $row[ 'media_id' ] );
+        }
+    }
     $tv = (int) $r[ 'case_tv_id' ];
     return array(
         'id' => (int) $r[ 'id' ], 'case_tv_id' => $tv, 'warranty' => $r[ 'warranty' ], 'paid' => $r[ 'paid' ],
@@ -134,7 +150,8 @@ function appstv_case_inspect_item( $r ){
         'no_open_note' => (string) $r[ 'no_open_note' ], 'inside' => $r[ 'inside' ], 'inside_note' => (string) $r[ 'inside_note' ],
         'repair' => $r[ 'repair' ], 'repair_note' => (string) $r[ 'repair_note' ], 'part_name' => $r[ 'part_name' ],
         'next' => $next, 'result' => $result, 'result_text' => $result === '' ? '' : APPSTV_INSPECT_RESULTS[ $result ],
-        'locked' => (string) $r[ 'pwrp_id' ] !== '',
+        'locked' => (string) $r[ 'pwrp_id' ] !== '' || $consent !== null,
+        'consent' => $consent,
         'charge' => $r[ 'charge' ], 'charge_by' => appstv_case_user_name( $r[ 'charge_by' ] ), 'charge_on' => $r[ 'charge_on' ],
         'photos' => array( 'outside_damage' => appstv_case_inspect_photos( $tv, 'outside_damage' ),
                            'inside_liquid' => appstv_case_inspect_photos( $tv, 'inside_liquid' ),
@@ -322,6 +339,8 @@ function appstv_case_inspect(){
         $step = (string) request( 'step' );
         if( $step === 'start' ){ return array( "Inspection of TV $serial.", array( 'inspection' => appstv_case_inspect_item( $r ) ) ); }
         if( $step === 'charge' ){ return appstv_case_inspect_charge( $id, $r, $serial ); }
+        if( $step === 'consent' ){ return appstv_case_inspect_consent( $case, $case_tv, $r, $chain ); }
+        if( (string) $r[ 'consent_id' ] !== '' ){ throw new AppstvServiceRuleException( "TV $serial was taken to the office with the customer's consent; the inspection cannot be changed." ); }
 
         if( (string) $r[ 'pwrp_id' ] !== '' ){ throw new AppstvServiceRuleException( "The repair of TV $serial is already in the warranty records; the inspection cannot be changed." ); }
         if( $step !== 'paid' && !in_array( $step, APPSTV_INSPECT_STEPS, true ) ){ throw new AppstvServiceRuleException( "Unknown inspection step." ); }
@@ -406,5 +425,116 @@ function appstv_case_inspect_charge( $id, $r, $serial ){
     appstv_case_log( $id, 'inspect', $text );
     $r = mysqli_fetch_assoc( appstv_case_db( "SELECT * FROM service_case_inspections WHERE id = " . (int) $r[ 'id' ] ) );
     return array( $text . ".", array( 'inspection' => appstv_case_inspect_item( $r ) ) );
+}
+
+/**
+ * @description The sentence the customer signs under (the phone builds the same sentence for the preview)
+ * @param {string} $title - Mr. | Ms. | Mrs. | Dr. | ''
+ * @param {string} $name - Person signing
+ * @param {string} $staff - Staff member taking the TV
+ * @param {string} $tv - Model and size ('' when not known)
+ * @param {string} $serial - Serial number
+ * @param {DateTime} $when - Date and time written in it (Singapore)
+ * @returns {string}
+ */
+function appstv_case_consent_statement( $title, $name, $staff, $tv, $serial, $when ){
+    $tv_words = ( $tv !== '' ? $tv . ' ' : '' ) . '(serial number ' . $serial . ')';
+    return 'I, ' . ( $title !== '' ? $title . ' ' : '' ) . $name . ', authorize ' . $staff . ' to take the TV ' . $tv_words
+         . ' on ' . $when->format( 'l, j F Y' ) . ' at ' . $when->format( 'g:i A' )
+         . ' for inspection, and repairs, thereby giving them my consent by signing below.';
+}
+
+/**
+ * @description Step 'consent' of appstv_case_inspect (1.0.33): the customer agrees, with a finger signature, that the
+ *              TV is taken to the office. Request: title, signer_name, shown_at (ISO time written in the sentence on
+ *              the phone), signature (data URL of a PNG / JPEG picture).
+ * @param {array} $case - service_cases row (locked)
+ * @param {array} $case_tv - service_case_tvs row (locked)
+ * @param {array} $r - service_case_inspections row (locked)
+ * @param {array|null} $chain - Warranty chain of the TV (null = not in the system)
+ * @returns {array} [ message, data ]
+ */
+function appstv_case_inspect_consent( $case, $case_tv, $r, $chain ){
+    global $con;
+    $id = (int) $case[ 'id' ];
+    $serial = $case_tv[ 'serial_number' ];
+    if( (string) $r[ 'consent_id' ] !== '' ){ throw new AppstvServiceRuleException( "The customer already signed for TV $serial." ); }
+    list( $next, $result ) = appstv_case_inspect_flow( $r );
+    if( $result !== 'to_office' ){ throw new AppstvServiceRuleException( "TV $serial is not marked to be taken to the office." ); }
+
+    $title = (string) request( 'title' );
+    if( !in_array( $title, APPSTV_CONSENT_TITLES, true ) ){ throw new AppstvServiceRuleException( "Choose the title (or none)." ); }
+    $name = trim( preg_replace( '/\s+/u', ' ', (string) request( 'signer_name' ) ) );
+    if( $name === '' ){ throw new AppstvServiceRuleException( "Write the name of the person signing." ); }
+    if( mb_strlen( $name ) > 200 ){ throw new AppstvServiceRuleException( "The name is too long (max 200)." ); }
+
+    // The time written in the sentence: as shown on the phone when it is recent, else now
+    $tz = new DateTimeZone( '+08:00' );
+    $now = new DateTime( 'now', $tz );
+    $when = clone $now;
+    $shown = DateTime::createFromFormat( DateTime::ATOM, (string) request( 'shown_at' ) );
+    if( $shown !== false ){
+        $shown->setTimezone( $tz );
+        $diff = $now->getTimestamp() - $shown->getTimestamp();
+        if( $diff >= -300 && $diff <= 3600 ){ $when = $shown; }
+    }
+
+    // Signature picture: a real image with some ink on it
+    $data = (string) request( 'signature' );
+    if( !preg_match( '#^data:image/(png|jpeg);base64,([A-Za-z0-9+/=\r\n]+)$#', $data, $m ) ){ throw new AppstvServiceRuleException( "The signature was not received. Sign again." ); }
+    $bytes = base64_decode( $m[ 2 ], true );
+    if( $bytes === false || strlen( $bytes ) === 0 || strlen( $bytes ) > APPSTV_CONSENT_MAX_BYTES ){ throw new AppstvServiceRuleException( "The signature picture is not valid. Sign again." ); }
+    $img = @imagecreatefromstring( $bytes );
+    if( $img === false ){ throw new AppstvServiceRuleException( "The signature picture is not valid. Sign again." ); }
+    $w = imagesx( $img ); $h = imagesy( $img );
+    if( $w < 200 || $h < 80 || $w > 4000 || $h > 4000 ){ throw new AppstvServiceRuleException( "The signature picture has a wrong size. Sign again." ); }
+    $flat = imagecreatetruecolor( $w, $h );                  // White background (a PNG may be transparent)
+    imagefill( $flat, 0, 0, imagecolorallocate( $flat, 255, 255, 255 ) );
+    imagecopy( $flat, $img, 0, 0, 0, 0, $w, $h );
+    $ink = 0;
+    for( $y = 0; $y < $h; $y += 2 ){
+        for( $x = 0; $x < $w; $x += 2 ){
+            $rgb = imagecolorat( $flat, $x, $y );
+            if( ( ( ( $rgb >> 16 ) & 255 ) + ( ( $rgb >> 8 ) & 255 ) + ( $rgb & 255 ) ) < 450 ){ $ink++; }
+        }
+    }
+    if( $ink < 60 ){ throw new AppstvServiceRuleException( "The signature is empty or too small. Ask the customer to sign in the box." ); }
+
+    // Stored as a photo of the case that cannot be removed
+    $now_iso = create_iso_8601_datetime();
+    $e_user = escape_string( appstv_case_user_id() );
+    appstv_case_db( "INSERT INTO service_case_media ( case_id, draft_id, tv_id, purpose, kind, original_name, mime, source_bytes, state, uploaded_by, uploaded_on )
+                     VALUES ( $id, NULL, " . (int) $case_tv[ 'id' ] . ", 'consent', 'photo', '" . escape_string( "Consent signature $serial.jpg" ) . "', 'image/jpeg', " . strlen( $bytes ) . ",
+                              'uploading', '$e_user', '$now_iso' )" );
+    $media_id = (int) mysqli_insert_id( $con );
+    $folder = date( 'Y' ) . '/' . date( 'm' );
+    appstv_media_dir( $folder );
+    $base = $folder . '/' . $media_id . '_sig_' . bin2hex( random_bytes( 6 ) );
+    $ok = imagejpeg( $flat, appstv_media_dir() . $base . '.jpg', 92 );
+    if( !$ok ){ throw new Exception( "Cannot save the signature" ); }
+    appstv_media_jpeg( appstv_media_dir() . $base . '.jpg', appstv_media_dir() . $base . '_t.jpg', APPSTV_MEDIA_THUMB_PX, 80 );
+    $file_bytes = (int) filesize( appstv_media_dir() . $base . '.jpg' );
+    appstv_case_db( "UPDATE service_case_media SET state = 'ready', file_name = '$base.jpg', thumb_file = '{$base}_t.jpg', size_bytes = $file_bytes,
+                            width = $w, height = $h, processed_on = '$now_iso' WHERE id = $media_id" );
+
+    $staff = appstv_case_user_name( appstv_case_user_id() );
+    if( $staff === '' ){ $staff = (string) appstv_case_user_id(); }
+    $tv_text = ( $chain !== null ) ? trim( (string) $chain[ 'product_name' ] ) : '';
+    $statement = appstv_case_consent_statement( $title, $name, $staff, $tv_text, $serial, $when );
+    $agent = substr( preg_replace( '/[\x00-\x1F]/', '', (string) ( $_SERVER[ 'HTTP_USER_AGENT' ] ?? '' ) ), 0, 255 );
+    appstv_case_db( "INSERT INTO service_case_consents ( case_id, case_tv_id, inspection_id, kind, title, signer_name, staff_user_id, staff_name, tv_text,
+                                                         serial_number, statement, shown_at, signed_on, media_id, user_agent )
+                     VALUES ( $id, " . (int) $case_tv[ 'id' ] . ", " . (int) $r[ 'id' ] . ", 'take_to_office', '" . escape_string( $title ) . "', '" . escape_string( $name ) . "',
+                              '$e_user', '" . escape_string( $staff ) . "', '" . escape_string( $tv_text ) . "', '" . escape_string( $serial ) . "',
+                              '" . escape_string( $statement ) . "', '" . $when->format( DateTime::ATOM ) . "', '$now_iso', $media_id, '" . escape_string( $agent ) . "' )" );
+    $consent_id = (int) mysqli_insert_id( $con );
+    appstv_case_db( "UPDATE service_case_inspections SET consent_id = $consent_id, result = 'at_office', updated_by = '$e_user', updated_on = '$now_iso',
+                            finished_on = '$now_iso' WHERE id = " . (int) $r[ 'id' ] );
+
+    $who = ( $title !== '' ? $title . ' ' : '' ) . $name;
+    appstv_case_history( $id, null, 'inspected', 'consent', null, null, "Inspection of TV $serial: $who signed the consent to take it to the office" );
+    appstv_case_log( $id, 'inspect', "TV $serial: At the office - $who signed the consent, taken by $staff" );
+    $r = mysqli_fetch_assoc( appstv_case_db( "SELECT * FROM service_case_inspections WHERE id = " . (int) $r[ 'id' ] ) );
+    return array( "Consent signed. TV $serial can be taken to the office.", array( 'inspection' => appstv_case_inspect_item( $r ) ) );
 }
 ?>

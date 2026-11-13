@@ -24,7 +24,8 @@ var SC = {
     STATUS : { open: 'Open', scheduled: 'Visit scheduled', visited: 'Visited', revisit: 'Needs another visit', closed: 'Closed' },
     STATUS_BADGE : { open: 'badge-light-primary', scheduled: 'badge-light-info', visited: 'badge-sc-amber', revisit: 'badge-sc-revisit', closed: 'badge-light' },
     // Why another visit is needed (1.0.26, same keys as APPSTV_CASE_REVISIT_REASONS)
-    REVISIT_REASONS : { part: 'Spare part needed', tools: 'More tools needed', not_available: 'Customer or room not available', senior: 'Needs a senior technician', other: 'Other' },
+    REVISIT_REASONS : { part: 'Spare part needed', tools: 'More tools needed', not_available: 'Customer or room not available', senior: 'Needs a senior technician',
+                        office: 'TV taken to the office', other: 'Other' },   // office: 1.0.33
     PART_STATES : { needed: 'Needed', ordered: 'Ordered', arrived: 'Arrived' },
     OUTCOME : { repaired: 'Repaired', replaced: 'Replaced', no_fault: 'No fault found', not_covered: 'Not covered' },
 
@@ -233,6 +234,7 @@ var SC = {
                 $.each( d.counts, function ( k, v ) { $( '#sc_count_' + k ).text( v ); } );
                 $( '[data-sc-chip="overdue"]' ).toggleClass( 'is-zero', d.counts.overdue === 0 );
                 $( '[data-sc-chip="today"]' ).toggleClass( 'is-zero', d.counts.today === 0 );
+                $( '[data-sc-chip="at_office"]' ).toggleClass( 'is-zero', d.counts.at_office === 0 );   // 1.0.33
                 $( '#sc_list' ).html( $.map( d.cases, SC.cardHtml ).join( '' ) );
                 $( '#sc_empty' ).toggleClass( 'd-none', d.cases.length > 0 );
             } ).catch( SC.toastError );
@@ -269,6 +271,7 @@ var SC = {
             + '  <span title="Visit"><i class="fa-regular fa-calendar"></i>' + SC.esc( dates || 'Not planned' ) + '</span>'
             + '  <span class="scc-staff" title="Assigned to"><i class="fa-solid fa-user"></i>' + SC.esc( staff ) + '</span>'
             + ( tvs ? '<span title="TVs"><i class="fa-solid fa-tv"></i>' + SC.esc( tvs ) + '</span>' : '' )
+            + ( c.at_office_count ? '<span class="scc-office" title="TVs at the office"><i class="fa-solid fa-building"></i>' + c.at_office_count + ' at the office</span>' : '' )
             + ( c.media_count ? '<span title="Photos / videos"><i class="fa-regular fa-image"></i>' + c.media_count + '</span>' : '' )
             + ( c.note_count ? '<span title="Notes"><i class="fa-regular fa-comment"></i>' + c.note_count + '</span>' : '' )
             + '</div></div></div>';
@@ -713,6 +716,11 @@ var SC = {
             + '<label class="form-label mt-4" id="scv_note_label" for="scv_note">Note <span class="text-muted fw-normal">(what was done, what was found)</span></label>'
             + '<textarea id="scv_note" class="form-control form-control-solid" rows="3" maxlength="2000"></textarea>'
             + '<div class="form-text mt-3"><i class="fa-regular fa-image me-1"></i>Photos from the site: add them on the <b>Photos &amp; videos</b> tab.</div></div>';
+        var guess = SC.visitGuess( d );                       // 1.0.33: filled in from the TV inspections
+        if ( guess ) {
+            html = html.replace( '<div class="text-start scv-form">', '<div class="text-start scv-form"><div class="scv-guess"><i class="fa-solid fa-wand-magic-sparkles"></i>'
+                                 + '<span>Filled in from the TV inspections: ' + SC.esc( guess.text ) + '. Check it before saving.</span></div>' );
+        }
 
         Swal.fire( {
             title : 'Finish visit ' + no + ' of ' + SC.esc( c.label ),
@@ -737,6 +745,12 @@ var SC = {
                     $p.find( '#scv_note_label' ).toggleClass( 'required', reason === 'other' );
                     if ( reason === 'part' ) { $p.find( '#scv_part' ).trigger( 'focus' ); }
                 } );
+                if ( guess ) {
+                    $p.find( 'input[name="scv_result"][value="' + guess.result + '"]' ).prop( 'checked', true ).trigger( 'change' );
+                    if ( guess.reason ) { $p.find( 'input[name="scv_reason"][value="' + guess.reason + '"]' ).prop( 'checked', true ).trigger( 'change' ); }
+                    if ( guess.part ) { $p.find( '#scv_part' ).val( guess.part ); }
+                    if ( guess.note ) { $p.find( '#scv_note' ).val( guess.note ); }
+                }
             },
             preConfirm : function () {
                 var $p = $( Swal.getPopup() );
@@ -761,6 +775,38 @@ var SC = {
                 SC.reloadCase();
             }
         } );
+    },
+
+    /**
+     * @description What the TV inspections say about the visit (1.0.33), to fill in Finish visit: a TV at (or to go
+     *              to) the office > a spare part > another reason -> needs another visit; every TV finished (repaired,
+     *              not covered, no repair wanted) -> fixed; otherwise nothing (not every TV inspected yet)
+     * @param {object} d - Data of appstv_case_get
+     * @returns {object|null} { result, reason, part, note, text }
+     */
+    visitGuess : function ( d ) {
+        var results = [], parts = [], notes = [];
+        if ( d.case.kind === 'main' ) {
+            $.each( d.tv_cases || [], function ( i, t ) { results.push( t.inspect_result === undefined ? null : t.inspect_result ); } );
+        } else {
+            $.each( d.tvs || [], function ( i, tv ) {
+                var x = SCI.of( tv.id );
+                results.push( x ? x.result : null );
+                if ( x && x.result === 'waiting_part' && x.part_name ) { parts.push( x.part_name ); }
+                if ( x && x.result === 'revisit' && x.repair_note ) { notes.push( 'TV ' + tv.serial_number + ': ' + x.repair_note ); }
+            } );
+        }
+        var has = function ( list ) { return results.some( function ( r ) { return list.indexOf( r ) !== -1; } ); };
+        var count = function ( list ) { return results.filter( function ( r ) { return list.indexOf( r ) !== -1; } ).length; };
+        var tvs = function ( n ) { return n + ' TV' + ( n === 1 ? '' : 's' ); };
+        if ( results.length === 0 ) { return null; }
+        if ( has( [ 'at_office', 'to_office' ] ) ) { return { result: 'revisit', reason: 'office', text: tvs( count( [ 'at_office', 'to_office' ] ) ) + ' to the office' }; }
+        if ( has( [ 'waiting_part' ] ) ) { return { result: 'revisit', reason: 'part', part: parts.join( ', ' ), text: tvs( count( [ 'waiting_part' ] ) ) + ' waiting for a spare part' }; }
+        if ( has( [ 'revisit' ] ) ) { return { result: 'revisit', reason: 'other', note: notes.join( '\n' ), text: tvs( count( [ 'revisit' ] ) ) + ' not repaired yet' }; }
+        if ( results.every( function ( r ) { return [ 'repaired', 'not_covered', 'declined' ].indexOf( r ) !== -1; } ) ) {
+            return { result: 'fixed', text: 'every TV is finished' };
+        }
+        return null;
     },
 
     /**

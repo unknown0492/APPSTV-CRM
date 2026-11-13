@@ -33,6 +33,7 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
                     <button type="button" class="sc-chip sc-chip-warning" data-sc-chip="today"><span class="sc-chip-n" id="sc_count_today">0</span> Visits today</button>
                     <button type="button" class="sc-chip sc-chip-primary" data-sc-chip="active"><span class="sc-chip-n" id="sc_count_active">0</span> Active cases</button>
                     <button type="button" class="sc-chip sc-chip-info" data-sc-chip="mine"><span class="sc-chip-n" id="sc_count_mine">0</span> Assigned to me</button>
+                    <button type="button" class="sc-chip sc-chip-office" data-sc-chip="at_office"><span class="sc-chip-n" id="sc_count_at_office">0</span> TVs at the office</button>
                 </div>
                 <!-- Filters -->
                 <div class="row g-3">
@@ -47,6 +48,7 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
                             <option value="open">Open</option>
                             <option value="scheduled">Visit scheduled</option>
                             <option value="revisit">Needs another visit</option>
+                            <option value="at_office">TVs at the office</option>
                             <option value="visited">Visited</option>
                             <option value="closed">Closed</option>
                             <option value="all">All</option>

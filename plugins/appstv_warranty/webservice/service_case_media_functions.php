@@ -298,6 +298,7 @@ function appstv_case_media_delete(){
             if( $case[ 'status' ] === 'closed' ){ throw new AppstvServiceRuleException( "This case is closed. Reopen it to remove photos or videos." ); }
         }
         if( $row[ 'state' ] === 'processing' ){ throw new AppstvServiceRuleException( "This video is being converted right now. Try again in a minute." ); }
+        if( $row[ 'purpose' ] === 'consent' ){ throw new AppstvServiceRuleException( "A customer's consent signature cannot be removed." ); }   // 1.0.33
         $e_user = escape_string( appstv_case_user_id() );
         $now = create_iso_8601_datetime();
         appstv_case_db( "UPDATE service_case_media SET deleted_by = '$e_user', deleted_on = '$now' WHERE id = " . (int) $row[ 'id' ] );

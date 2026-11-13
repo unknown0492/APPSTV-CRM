@@ -10,6 +10,7 @@
    Every step is saved at once (appstv_case_inspect); the server sends back the next step and the result, so the
    rules live in one place. Damage / working photos are added in the step (camera or files, the crop editor) and
    belong to the TV and the step. Only one TV is inspected at a time.
+   1.0.33: "To be taken to the office" -> the customer signs the consent (SGN, below) -> "At the office".
    ============================================= */
 
 var SCI = {
@@ -23,7 +24,7 @@ var SCI = {
     PURPOSE : { outside: 'outside_damage', inside: 'inside_liquid', repair: 'working' },
     STEP_TITLES : { warranty: 'Warranty', outside: 'Outside check', paid: 'Paid repair', open_here: 'Open the TV here', inside: 'Inside check', repair: 'Repair on site' },
     RESULT_BADGE : { not_covered: 'badge-sc-bad', declined: 'badge-sc-bad', repaired: 'badge-sc-ok', waiting_part: 'badge-sc-amber',
-                     to_office: 'badge-sc-window', revisit: 'badge-sc-amber' },
+                     to_office: 'badge-sc-window', at_office: 'badge-sc-office', revisit: 'badge-sc-amber' },
 
     /**
      * @description The inspection of a TV of the open case
@@ -74,6 +75,17 @@ var SCI = {
                                       : 'Service charge to collect' + ( x.warranty === 'out' ? ' (out of warranty)' : ' (paid repair)' ) ) + '</span>'
                   + ( d.can_inspect && !closed ? '<button type="button" class="btn btn-sm btn-light" data-sci="charge" data-tv-id="' + tv.id + '" data-collected="' + ( done ? 0 : 1 ) + '">'
                                                  + ( done ? 'Undo' : 'Mark collected' ) + '</button>' : '' ) + '</div>';
+        }
+        // 1.0.33: the customer's consent before the TV is taken / the signed consent
+        if ( x && x.result === 'to_office' && !x.consent ) {
+            html += '<div class="sci-strip is-sign"><i class="fa-solid fa-signature"></i><span>The customer signs the consent before the TV is taken to the office</span>'
+                  + ( SCI.canOpen( tv, closed ) ? '<button type="button" class="btn btn-sm btn-primary" data-sci="consent" data-tv-id="' + tv.id + '">Customer signs</button>' : '' ) + '</div>';
+        }
+        if ( x && x.consent ) {
+            var k = x.consent;
+            html += '<div class="sci-strip is-office"><i class="fa-solid fa-building"></i><span>At the office · consent signed by ' + SC.esc( ( k.title ? k.title + ' ' : '' ) + k.signer_name )
+                  + ', ' + SC.esc( SGN.sgt( k.signed_on ) ) + ' · taken by ' + SC.esc( k.staff_name ) + '</span>'
+                  + '<button type="button" class="btn btn-sm btn-light" data-sci="view-consent" data-tv-id="' + tv.id + '"><i class="fa-solid fa-print"></i> View / print</button></div>';
         }
         if ( !SCI.canOpen( tv, closed ) && x && SCI.tvId !== tv.id ) {
             html += '<div class="sci-summary">' + SCI.summaryHtml( x, false ) + '</div>';
@@ -435,11 +447,14 @@ var SCI = {
                 declined : 'Out of warranty and no repair wanted. Collect the service charge.',
                 repaired : x.locked ? 'The repair is in the warranty records of this TV.' : 'Repaired. (This TV has no warranty record, so the repair is kept on the case only.)',
                 waiting_part : 'Finish the visit with "Needs another visit: spare part needed" and plan the next visit.',
-                to_office : 'Finish the visit with "Needs another visit" and take the TV to the office.',
+                to_office : 'Before the TV is taken, the customer signs the consent on this phone.',
+                at_office : 'The TV is at the office. Finish the visit with "Needs another visit: TV taken to the office".',
                 revisit : 'Finish the visit with "Needs another visit" and plan the next visit.'
             };
             html += '<div class="sci-result"><div>' + SCI.badge( x ) + '</div><div class="fs-7 mt-2">' + SC.esc( hints[ x.result ] || '' ) + '</div>'
-                  + ( x.charge === 'to_collect' ? '<div class="fs-7 mt-1 sc-text-amber fw-semibold">Service charge to collect.</div>' : '' ) + '</div>';
+                  + ( x.charge === 'to_collect' ? '<div class="fs-7 mt-1 sc-text-amber fw-semibold">Service charge to collect.</div>' : '' )
+                  + ( x.result === 'to_office' && !x.consent ? '<button type="button" class="btn sc-btn-finish mt-3" data-sci="consent" data-tv-id="' + SCI.tvId + '">'
+                                                               + '<i class="fa-solid fa-signature"></i> Customer signs the consent</button>' : '' ) + '</div>';
         }
         SCI.keepGallery();
         $p.html( '<div class="sci-box">' + html + '</div>' );
@@ -541,3 +556,268 @@ var SCI = {
 };
 
 $( function () { SCI.bind(); } );
+
+
+/* =============================================
+   SGN (v1.0.33): the customer's consent to take a TV to the office, signed with a finger on the staff member's
+   phone. A full-screen page inside the case window: title (Mr. / Ms. / Mrs. / Dr. / none), name, the sentence,
+   the signature box. The sentence is built here for the customer to read and again on the server (same words,
+   same time), and kept with the signature. view() opens a printable copy of a signed consent.
+   ============================================= */
+var SGN = {
+    tvId : null,                                               // service_case_tvs.id being signed for
+    title : '',                                                // Chosen title ('' = none)
+    shownAt : '',                                              // ISO time written in the sentence now
+    timer : null,                                              // Refreshes the time in the sentence
+    pad : null,                                                // { canvas, ctx, ratio, drawing, ink (length drawn, CSS px) }
+    MIN_INK : 60,                                              // A signature is at least this long (CSS px)
+
+    /**
+     * @description Date and time in Singapore, for the sentence
+     * @returns {object} { iso: '2026-11-13T15:45:00+08:00', text: 'Friday, 13 November 2026 at 3:45 PM' }
+     */
+    now : function () {
+        var sg = new Date( Date.now() + 8 * 3600000 );         // Singapore is UTC+8 all year
+        var pad = function ( n ) { return ( n < 10 ? '0' : '' ) + n; };
+        var days = [ 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ];
+        var months = [ 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December' ];
+        var h = sg.getUTCHours(), m = sg.getUTCMinutes();
+        return {
+            iso : sg.getUTCFullYear() + '-' + pad( sg.getUTCMonth() + 1 ) + '-' + pad( sg.getUTCDate() ) + 'T' + pad( h ) + ':' + pad( m ) + ':00+08:00',
+            text : days[ sg.getUTCDay() ] + ', ' + sg.getUTCDate() + ' ' + months[ sg.getUTCMonth() ] + ' ' + sg.getUTCFullYear()
+                 + ' at ' + ( h % 12 === 0 ? 12 : h % 12 ) + ':' + pad( m ) + ' ' + ( h < 12 ? 'AM' : 'PM' )
+        };
+    },
+
+    /**
+     * @description A saved time in Singapore time, whatever the device's time zone (a consent is a Singapore paper)
+     * @param {string} iso - ISO 8601 time
+     * @returns {string} e.g. "13 Nov 2026, 9:04 PM SGT"
+     */
+    sgt : function ( iso ) {
+        var t = new Date( iso );
+        if ( isNaN( t.getTime() ) ) { return iso || ''; }
+        var sg = new Date( t.getTime() + 8 * 3600000 ), h = sg.getUTCHours(), m = sg.getUTCMinutes();
+        var months = [ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ];
+        return sg.getUTCDate() + ' ' + months[ sg.getUTCMonth() ] + ' ' + sg.getUTCFullYear() + ', ' + ( h % 12 === 0 ? 12 : h % 12 ) + ':' + ( m < 10 ? '0' : '' ) + m
+             + ' ' + ( h < 12 ? 'AM' : 'PM' ) + ' SGT';
+    },
+
+    /**
+     * @description The sentence (same words as appstv_case_consent_statement on the server)
+     * @param {string} title - Title ('' = none)
+     * @param {string} name - Person signing
+     * @param {string} when - Date and time text
+     * @returns {string}
+     */
+    statement : function ( title, name, when ) {
+        var tv = null;
+        $.each( SC.current.tvs, function ( i, t ) { if ( t.id === SGN.tvId ) { tv = t; } } );
+        var ch = tv ? tv.chain : null;
+        var model = ch && ch.product_name ? $.trim( ch.product_name ) + ' ' : '';
+        var staff = SC.current.me_name || SC.me;
+        return 'I, ' + ( title ? title + ' ' : '' ) + ( name || '…' ) + ', authorize ' + staff + ' to take the TV ' + model
+             + '(serial number ' + ( tv ? tv.serial_number : '' ) + ') on ' + when + ' for inspection, and repairs, thereby giving them my consent by signing below.';
+    },
+
+    /**
+     * @description Opens the consent page for a TV
+     * @param {number} tvId - service_case_tvs.id
+     * @returns {void}
+     */
+    open : function ( tvId ) {
+        SGN.tvId = tvId;
+        SGN.title = '';
+        var d = SC.current, tv = null;
+        $.each( d.tvs, function ( i, t ) { if ( t.id === tvId ) { tv = t; } } );
+        if ( !tv ) { return; }
+        var titles = $.map( d.consent_titles || [ 'Mr.', 'Ms.', 'Mrs.', 'Dr.', '' ], function ( t ) {
+            return '<button type="button" class="scw-chip' + ( t === '' ? ' is-on' : '' ) + '" data-sgn-title="' + SC.esc( t ) + '" aria-pressed="' + ( t === '' ) + '">' + ( t || 'None' ) + '</button>';
+        } ).join( '' );
+        var html = '<div class="sgn" id="sgn" role="dialog" aria-modal="true" aria-labelledby="sgn_title">'
+            + '<div class="sgn-head"><div><div class="sgn-title" id="sgn_title">Consent to take the TV</div>'
+            + '<div class="text-muted fs-7">' + SC.esc( d.case.label ) + ' · ' + SC.esc( d.case.customer_name ) + ' · TV <span class="font-monospace">' + SC.esc( tv.serial_number ) + '</span></div></div>'
+            + '<button type="button" class="btn btn-icon btn-sm btn-light" data-sgn="cancel" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div>'
+            + '<div class="sgn-body">'
+            + '<div class="form-label">Title</div><div class="scw-chips mb-3">' + titles + '</div>'
+            + '<label class="form-label required" for="sgn_name">Name of the person signing</label>'
+            + '<input type="text" id="sgn_name" class="form-control form-control-solid mb-4" maxlength="200" autocomplete="off" value="' + SC.esc( d.case.contact_name || '' ) + '"/>'
+            + '<div class="sgn-statement" id="sgn_statement"></div>'
+            + '<div class="sgn-pad"><canvas id="sgn_canvas" aria-label="Signature box: sign with your finger"></canvas>'
+            + '<div class="sgn-pad-line"></div><div class="sgn-pad-hint" id="sgn_hint">Sign here with your finger</div></div>'
+            + '<div class="d-flex justify-content-between align-items-center mt-2"><span class="text-muted fs-8">Signed on this phone · kept with the case</span>'
+            + '<button type="button" class="btn btn-sm btn-light" data-sgn="clear"><i class="fa-solid fa-eraser"></i> Clear</button></div>'
+            + '</div>'
+            + '<div class="sgn-foot"><button type="button" class="btn btn-light" data-sgn="cancel">Cancel</button>'
+            + '<button type="button" class="btn btn-primary" data-sgn="sign" disabled><i class="fa-solid fa-signature"></i> Sign and take the TV</button></div></div>';
+        $( '#sgn' ).remove();
+        $( '#sc_case_modal' ).append( html );
+        SGN.refresh();
+        SGN.timer = setInterval( SGN.refresh, 15000 );
+        SGN.initPad();
+        // Escape closes this page, not the case window (listened to here, before Bootstrap sees it)
+        document.getElementById( 'sgn' ).addEventListener( 'keydown', function ( e ) {
+            if ( e.key === 'Escape' ) { e.stopPropagation(); e.preventDefault(); SGN.close(); }
+        } );
+        $( '#sgn_name' ).trigger( 'focus' );
+    },
+
+    /**
+     * @description Redraws the sentence (name, title or the minute changed)
+     * @returns {void}
+     */
+    refresh : function () {
+        var now = SGN.now();
+        SGN.shownAt = now.iso;
+        $( '#sgn_statement' ).text( SGN.statement( SGN.title, $.trim( $( '#sgn_name' ).val() || '' ).replace( /\s+/g, ' ' ), now.text ) );
+        SGN.ready();
+    },
+
+    /**
+     * @description Turns the Sign button on when a name and a signature are there
+     * @returns {void}
+     */
+    ready : function () {
+        var ok = $.trim( $( '#sgn_name' ).val() || '' ) !== '' && SGN.pad && SGN.pad.ink > SGN.MIN_INK;
+        $( '[data-sgn="sign"]' ).prop( 'disabled', !ok );
+    },
+
+    /**
+     * @description Sets up the signature box (sharp on phones: drawn at the screen's pixel ratio)
+     * @returns {void}
+     */
+    initPad : function () {
+        var canvas = document.getElementById( 'sgn_canvas' );
+        var ratio = Math.max( 1, Math.min( 3, window.devicePixelRatio || 1 ) );
+        var rect = canvas.getBoundingClientRect();
+        canvas.width = Math.round( rect.width * ratio );
+        canvas.height = Math.round( rect.height * ratio );
+        var ctx = canvas.getContext( '2d' );
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect( 0, 0, canvas.width, canvas.height );
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#0b1f44';
+        ctx.lineWidth = 2.6 * ratio;
+        SGN.pad = { canvas: canvas, ctx: ctx, ratio: ratio, drawing: false, ink: 0, last: null };
+        $( '#sgn_hint' ).removeClass( 'd-none' );
+        var at = function ( e ) {
+            var r = canvas.getBoundingClientRect();
+            return { x: ( e.clientX - r.left ) * ratio, y: ( e.clientY - r.top ) * ratio };
+        };
+        canvas.onpointerdown = function ( e ) {
+            e.preventDefault();
+            canvas.setPointerCapture( e.pointerId );
+            SGN.pad.drawing = true;
+            SGN.pad.last = at( e );
+            ctx.beginPath();
+            ctx.arc( SGN.pad.last.x, SGN.pad.last.y, ctx.lineWidth / 2, 0, Math.PI * 2 );
+            ctx.fillStyle = '#0b1f44';
+            ctx.fill();
+            $( '#sgn_hint' ).addClass( 'd-none' );
+        };
+        canvas.onpointermove = function ( e ) {
+            if ( !SGN.pad.drawing ) { return; }
+            e.preventDefault();
+            var p = at( e );
+            ctx.beginPath();
+            ctx.moveTo( SGN.pad.last.x, SGN.pad.last.y );
+            ctx.lineTo( p.x, p.y );
+            ctx.stroke();
+            SGN.pad.ink += Math.sqrt( Math.pow( p.x - SGN.pad.last.x, 2 ) + Math.pow( p.y - SGN.pad.last.y, 2 ) ) / ratio;   // Length drawn (CSS px)
+            SGN.pad.last = p;
+        };
+        canvas.onpointerup = canvas.onpointercancel = function () {
+            if ( !SGN.pad.drawing ) { return; }
+            SGN.pad.drawing = false;
+            SGN.ready();
+        };
+    },
+
+    /**
+     * @description Closes the consent page
+     * @returns {void}
+     */
+    close : function () {
+        clearInterval( SGN.timer );
+        SGN.timer = null;
+        SGN.pad = null;
+        $( '#sgn' ).remove();
+    },
+
+    /**
+     * @description Sends the signed consent
+     * @returns {void}
+     */
+    sign : function () {
+        var name = $.trim( $( '#sgn_name' ).val() || '' ).replace( /\s+/g, ' ' );
+        if ( !name ) { showSimpleToast( 'warning', 'Write the name of the person signing.' ); return; }
+        if ( !SGN.pad || SGN.pad.ink <= SGN.MIN_INK ) { showSimpleToast( 'warning', 'The customer has to sign in the box.' ); return; }
+        var $btn = $( '[data-sgn="sign"]' ).prop( 'disabled', true );
+        var tvId = SGN.tvId;
+        SC.post( { what_do_you_want: 'appstv_case_inspect', case_id: SC.current.case.id, case_tv_id: tvId, step: 'consent',
+                   title: SGN.title, signer_name: name, shown_at: SGN.shownAt, signature: SGN.pad.canvas.toDataURL( 'image/png' ) } ).then( function ( info ) {
+            SC.current.inspections[ String( tvId ) ] = info.data.inspection;
+            SGN.close();
+            showSimpleToast( 'success', info.message );
+            SC.reloadCase();
+        } ).catch( function ( message ) {
+            SC.toastError( message );
+            $btn.prop( 'disabled', false );
+        } );
+    },
+
+    /**
+     * @description Opens a printable copy of a signed consent in a new window
+     * @param {number} tvId - service_case_tvs.id
+     * @returns {void}
+     */
+    view : function ( tvId ) {
+        var x = SCI.of( tvId ), d = SC.current;
+        if ( !x || !x.consent ) { return; }
+        var k = x.consent, e = SC.esc;
+        var w = window.open( '', '_blank' );
+        if ( !w ) { showSimpleToast( 'warning', 'The browser blocked the new window. Allow pop-ups for this site and try again.' ); return; }
+        var img = new URL( SCMedia.url( k.media_id, 'file' ), window.location.href ).href;
+        w.document.open();
+        w.document.write( '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+            + '<title>Consent ' + e( d.case.label ) + ' ' + e( k.serial_number ) + '</title><style>'
+            + 'body{font-family:Arial,Helvetica,sans-serif;color:#181c32;max-width:760px;margin:32px auto;padding:0 20px;line-height:1.5}'
+            + 'h1{font-size:22px;margin:0 0 4px}.muted{color:#5e6278;font-size:14px}.st{font-size:18px;margin:28px 0 20px}'
+            + '.sig{border:1px solid #d6d6e0;border-radius:8px;padding:8px;max-width:100%}.sig img{display:block;width:100%;height:auto}'
+            + 'table{margin-top:20px;border-collapse:collapse;font-size:14px}td{padding:4px 16px 4px 0;vertical-align:top}td:first-child{color:#5e6278}'
+            + '@media print{body{margin:0}}</style></head><body>'
+            + '<h1>Consent to take the TV</h1><div class="muted">' + e( d.case.label ) + ' · ' + e( d.case.customer_name ) + '</div>'
+            + '<p class="st">' + e( k.statement ) + '</p>'
+            + '<div class="sig"><img src="' + e( img ) + '" alt="Signature of ' + e( k.signer_name ) + '"></div>'
+            + '<table><tr><td>Signed by</td><td>' + e( ( k.title ? k.title + ' ' : '' ) + k.signer_name ) + '</td></tr>'
+            + '<tr><td>TV taken by</td><td>' + e( k.staff_name ) + '</td></tr>'
+            + '<tr><td>Serial number</td><td>' + e( k.serial_number ) + '</td></tr>'
+            + '<tr><td>Saved</td><td>' + e( SGN.sgt( k.signed_on ) ) + '</td></tr></table>'
+            + '<script>var i=document.images[0];function p(){setTimeout(function(){window.print();},200);}if(i.complete){p();}else{i.onload=p;i.onerror=p;}<\/script>'
+            + '</body></html>' );
+        w.document.close();
+    },
+
+    /**
+     * @description Binds the events (once)
+     * @returns {void}
+     */
+    bind : function () {
+        var $m = $( '#sc_case_modal' );
+        $m.on( 'click', '[data-sci="consent"]', function () { SGN.open( +$( this ).attr( 'data-tv-id' ) ); } );
+        $m.on( 'click', '[data-sci="view-consent"]', function () { SGN.view( +$( this ).attr( 'data-tv-id' ) ); } );
+        $m.on( 'click', '[data-sgn="cancel"]', function () { SGN.close(); } );
+        $m.on( 'click', '[data-sgn="clear"]', function () { SGN.initPad(); SGN.ready(); } );
+        $m.on( 'click', '[data-sgn="sign"]', function () { SGN.sign(); } );
+        $m.on( 'click', '[data-sgn-title]', function () {
+            SGN.title = $( this ).attr( 'data-sgn-title' );
+            $( '[data-sgn-title]' ).each( function () { var on = $( this ).attr( 'data-sgn-title' ) === SGN.title; $( this ).toggleClass( 'is-on', on ).attr( 'aria-pressed', on ); } );
+            SGN.refresh();
+        } );
+        $m.on( 'input', '#sgn_name', function () { SGN.refresh(); } );
+        $m.on( 'hidden.bs.modal', function () { SGN.close(); } );
+    }
+};
+
+$( function () { SGN.bind(); } );

@@ -19,6 +19,7 @@ define( 'APPSTV_CASE_REVISIT_REASONS', array(
     'tools'         => 'More tools needed',
     'not_available' => 'Customer or room not available',
     'senior'        => 'Needs a senior technician',
+    'office'        => 'TV taken to the office',                 // 1.0.33
     'other'         => 'Other'
 ) );
 define( 'APPSTV_CASE_PART_STATES', array( 'needed' => 'Needed', 'ordered' => 'Ordered', 'arrived' => 'Arrived' ) );

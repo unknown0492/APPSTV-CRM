@@ -477,7 +477,7 @@ function appstv_case_find_tv(){
 function appstv_case_list(){
     checkAuthorizationForFunction( __FUNCTION__ );
     appstv_case_answer( __FUNCTION__, function(){
-        $status   = (string) request( 'status' );             // active (default) | open | scheduled | visited | closed | all | overdue | today
+        $status   = (string) request( 'status' );             // active (default) | open | scheduled | visited | closed | all | overdue | today | at_office
         $assigned = (string) request( 'assigned' );           // '' anyone | me | none | <user_id>
         $q        = trim( (string) request( 'q' ) );
         $today    = appstv_case_today();
@@ -494,6 +494,10 @@ function appstv_case_list(){
         if( $status === '' || $status === 'active' ){ $where[] = "c.status <> 'closed'"; }
         else if( $status === 'overdue' ){ $where[] = $overdue; }
         else if( $status === 'today' ){ $where[] = $due_today; }
+        else if( $status === 'at_office' ){                   // 1.0.33: a TV of the case (or of its TV cases) is at the office
+            $where[] = "EXISTS ( SELECT 1 FROM service_case_inspections i JOIN service_cases k ON k.id = i.case_id
+                                 WHERE ( k.id = c.id OR k.parent_case_id = c.id ) AND i.result = 'at_office' )";
+        }
         else if( in_array( $status, APPSTV_CASE_STATUSES ) ){ $where[] = "c.status = '$status'"; }
 
         // Staff: any of the case's staff (service_case_staff), or the single assigned_user_id of older cases
@@ -525,6 +529,8 @@ function appstv_case_list(){
                        ( SELECT COUNT(*) FROM service_case_notes n WHERE n.case_id = c.id AND n.note_type = 'note' ) AS note_count,
                        ( SELECT COUNT(*) FROM service_case_visits v WHERE v.case_id = c.id ) AS visit_count,
                        ( SELECT COUNT(*) FROM service_cases k WHERE k.parent_case_id = c.id AND k.case_kind = 'tv' AND k.status = 'revisit' ) AS revisit_tv_count,
+                       ( SELECT COUNT(*) FROM service_case_inspections i JOIN service_cases k ON k.id = i.case_id
+                         WHERE ( k.id = c.id OR k.parent_case_id = c.id ) AND i.result = 'at_office' ) AS at_office_count,
                        lv.visited_on AS lv_on, lv.result AS lv_result, lv.reason AS lv_reason, lv.part_name AS lv_part, lv.part_status AS lv_part_status
                 FROM service_cases c
                 LEFT JOIN service_case_visits lv ON lv.case_id = c.id AND lv.visit_no = ( SELECT MAX( x.visit_no ) FROM service_case_visits x WHERE x.case_id = c.id )
@@ -569,7 +575,8 @@ function appstv_case_list(){
                 'visit_date' => (string) $row[ 'visit_date' ], 'visit_time' => (string) $row[ 'visit_time' ], 'due' => $due,
                 'created_on' => $row[ 'created_on' ], 'closed_on' => $row[ 'closed_on' ], 'note_count' => (int) $row[ 'note_count' ],
                 'visit_count' => (int) $row[ 'visit_count' ], 'last_visit' => $last_visit, 'revisit_wait' => $revisit_wait,
-                'revisit_days' => APPSTV_CASE_REVISIT_DAYS, 'revisit_tv_count' => (int) $row[ 'revisit_tv_count' ]
+                'revisit_days' => APPSTV_CASE_REVISIT_DAYS, 'revisit_tv_count' => (int) $row[ 'revisit_tv_count' ],
+                'at_office_count' => (int) $row[ 'at_office_count' ]   // 1.0.33
             );
         }
 
@@ -577,7 +584,8 @@ function appstv_case_list(){
                 SUM( $overdue ) AS overdue,
                 SUM( $due_today ) AS today,
                 SUM( c.status <> 'closed' ) AS active,
-                SUM( c.status <> 'closed' AND " . $staff_is( $me ) . " ) AS mine
+                SUM( c.status <> 'closed' AND " . $staff_is( $me ) . " ) AS mine,
+                ( SELECT COUNT(*) FROM service_case_inspections i WHERE i.result = 'at_office' ) AS at_office
             FROM service_cases c WHERE c.case_kind <> 'tv'" ) );
         foreach( $counts as $k => $v ){ $counts[ $k ] = (int) $v; }
 
@@ -669,7 +677,9 @@ function appstv_case_get(){
             'inspections' => appstv_case_inspect_list( $id ),
             'inspect_results' => APPSTV_INSPECT_RESULTS,
             'inspect_no_open' => APPSTV_INSPECT_NO_OPEN,
-            'can_inspect' => hasAuthorization( 'appstv_case_inspect' )
+            'can_inspect' => hasAuthorization( 'appstv_case_inspect' ),
+            'me_name' => appstv_case_user_name( appstv_case_user_id() ),  // 1.0.33: written in the consent sentence
+            'consent_titles' => APPSTV_CONSENT_TITLES
         );
         return array( "Case SC-$id.", $data );
     } );
