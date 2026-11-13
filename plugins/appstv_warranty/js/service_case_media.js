@@ -511,17 +511,24 @@ var SCMEditor = {
 
     cropper : null,                                            // Cropper instance
     onDone : null,                                             // Called with the edited JPEG blob
+    onCancel : null,                                           // Called when the editor is closed without Done (1.0.30)
+    done : false,                                              // Done was pressed
 
     /**
      * @description Opens the editor
      * @param {HTMLCanvasElement} canvas - Upright photo
      * @param {number} rotate - Turn already chosen (degrees)
      * @param {function} onDone - Called with the edited Blob
+     * @param {function} [onCancel] - Called when it is closed without Done (1.0.30)
+     * @param {string} [title] - Window title (default "Crop / rotate")
      * @returns {void}
      */
-    open : function ( canvas, rotate, onDone ) {
+    open : function ( canvas, rotate, onDone, onCancel, title ) {
         SCMEditor.ensure();
         SCMEditor.onDone = onDone;
+        SCMEditor.onCancel = onCancel || null;
+        SCMEditor.done = false;
+        $( '#scm_editor .modal-title' ).text( title || 'Crop / rotate' );
         var $img = $( '#scm_editor_img' );
         $img.attr( 'src', canvas.toDataURL( 'image/jpeg', 0.92 ) );
         var modal = bootstrap.Modal.getOrCreateInstance( document.getElementById( 'scm_editor' ) );
@@ -547,6 +554,8 @@ var SCMEditor = {
             + '<div class="modal-footer py-3 justify-content-between">'
             + '<div class="d-flex gap-2"><button type="button" class="btn btn-light btn-icon" data-scm-edit="left" title="Turn left" aria-label="Turn left"><i class="fa-solid fa-rotate-left"></i></button>'
             + '<button type="button" class="btn btn-light btn-icon" data-scm-edit="right" title="Turn right" aria-label="Turn right"><i class="fa-solid fa-rotate-right"></i></button>'
+            + '<button type="button" class="btn btn-light btn-icon" data-scm-edit="zoom-in" title="Zoom in" aria-label="Zoom in"><i class="fa-solid fa-magnifying-glass-plus"></i></button>'
+            + '<button type="button" class="btn btn-light btn-icon" data-scm-edit="zoom-out" title="Zoom out" aria-label="Zoom out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>'
             + '<button type="button" class="btn btn-light" data-scm-edit="reset">Reset</button></div>'
             + '<button type="button" class="btn btn-primary" data-scm-edit="done">Done</button></div></div></div></div>' );
         $( '#scm_editor' ).on( 'click', '[data-scm-edit]', function () {
@@ -555,8 +564,11 @@ var SCMEditor = {
             var what = $( this ).attr( 'data-scm-edit' );
             if ( what === 'left' ) { c.rotate( -90 ); }
             if ( what === 'right' ) { c.rotate( 90 ); }
+            if ( what === 'zoom-in' ) { c.zoom( 0.1 ); }       // 1.0.30 (pinch / mouse wheel zoom too)
+            if ( what === 'zoom-out' ) { c.zoom( -0.1 ); }
             if ( what === 'reset' ) { c.reset(); }
             if ( what === 'done' ) {
+                SCMEditor.done = true;
                 c.getCroppedCanvas( { maxWidth: SCMedia.PHOTO_PX, maxHeight: SCMedia.PHOTO_PX, fillColor: '#fff', imageSmoothingQuality: 'high' } ).toBlob( function ( blob ) {
                     bootstrap.Modal.getOrCreateInstance( document.getElementById( 'scm_editor' ) ).hide();
                     if ( blob && SCMEditor.onDone ) { SCMEditor.onDone( blob ); }
@@ -566,6 +578,8 @@ var SCMEditor = {
         $( '#scm_editor' ).on( 'hidden.bs.modal', function () {
             if ( SCMEditor.cropper ) { SCMEditor.cropper.destroy(); SCMEditor.cropper = null; }
             $( '#scm_editor_img' ).attr( 'src', '' );
+            if ( !SCMEditor.done && SCMEditor.onCancel ) { SCMEditor.onCancel(); }
+            SCMEditor.onCancel = null;
             if ( $( '.modal.show' ).length ) { $( 'body' ).addClass( 'modal-open' ); }   // The window below stays scrollable
         } );
     }

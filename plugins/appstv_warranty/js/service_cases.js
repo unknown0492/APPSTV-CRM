@@ -169,6 +169,7 @@ var SC = {
         } );
         $body.on( 'click', '[data-sc-action]', function () { SC.caseAction( $( this ).attr( 'data-sc-action' ), $( this ) ); } );
         $body.on( 'keydown', '#scd_add_serial', function ( e ) { if ( e.key === 'Enter' ) { e.preventDefault(); SC.caseAction( 'add-tv', $( this ) ); } } );
+        $body.on( 'change', '#scd_tv_photos', function () { SC.readTvPhotos( Array.prototype.slice.call( this.files || [] ) ); } );
         $( '#sc_case_modal' ).on( 'hidden.bs.modal', function () {
             SC.current = null;
             SC.setUrl( null );
@@ -475,7 +476,10 @@ var SC = {
             if ( !closed ) {
                 tvsHtml += '<div class="input-group mt-3 sc-add-tv"><input type="text" id="scd_add_serial" class="form-control form-control-solid font-monospace" placeholder="Add a TV: serial number" autocomplete="off" autocapitalize="characters" aria-label="Serial number"/>'
                          + '<button type="button" class="btn btn-light-primary" data-sc-action="add-tv">Add</button>'
-                         + '<button type="button" class="btn btn-primary" data-sc-action="scan-tv" aria-label="Scan"><i class="fa-solid fa-camera"></i></button></div>';
+                         + '<button type="button" class="btn btn-primary" data-sc-action="scan-tv" title="Scan with the camera" aria-label="Scan with the camera"><i class="fa-solid fa-camera"></i></button>'
+                         + '<button type="button" class="btn btn-primary" data-sc-action="photo-tv" title="Photo of the barcode" aria-label="Photo of the barcode"><i class="fa-regular fa-image"></i></button></div>'
+                         + '<input type="file" id="scd_tv_photos" class="d-none" accept="image/*"' + ( c.kind === 'tv' ? '' : ' multiple' ) + '/>'
+                         + '<div class="form-text" id="scd_tv_photo_status" aria-live="polite">Photo of the barcode: crop it to the barcode, the serial number is read from it.</div>';
             }
             tvsHtml += '</div>';
         }
@@ -915,6 +919,7 @@ var SC = {
             SC.caseCall( { what_do_you_want: 'appstv_case_add_note', note: note } ).catch( function () {} );
         }
         if ( action === 'add-tv' ) { SC.addCaseTv( $( '#scd_add_serial' ).val() ); }
+        if ( action === 'photo-tv' ) { $( '#scd_tv_photos' ).val( '' ).trigger( 'click' ); }
         if ( action === 'scan-tv' ) {
             AppstvScanner.open( { title: 'Scan the TV', continuous: false, onScan: function ( serial ) { SC.addCaseTv( serial ); } } );
         }
@@ -935,21 +940,23 @@ var SC = {
     /**
      * @description Adds a TV to the open case: one match is added, several are offered, none can be added as "not in the system"
      * @param {string} raw - Serial number
-     * @returns {void}
+     * @returns {Promise<boolean>} Resolves when finished: true = added (1.0.30: photos are added one after the other)
      */
     addCaseTv : function ( raw ) {
         var serial = AppstvScanner.cleanSerial( raw );
-        if ( !serial ) { showSimpleToast( 'warning', 'Enter a serial number (letters and digits).' ); return; }
+        if ( !serial ) { showSimpleToast( 'warning', 'Enter a serial number (letters and digits).' ); return Promise.resolve( false ); }
         var add = function ( productSnId ) {
-            SC.caseCall( { what_do_you_want: 'appstv_case_set_tv', product_sn_id: productSnId, serial_number: serial } ).catch( function () {} );
+            return SC.caseCall( { what_do_you_want: 'appstv_case_set_tv', product_sn_id: productSnId, serial_number: serial } )
+                .then( function () { return true; } ).catch( function () { return false; } );
         };
-        SC.post( { what_do_you_want: 'appstv_case_find_tv', serial_number: serial } ).then( function ( info ) {
+        return SC.post( { what_do_you_want: 'appstv_case_find_tv', serial_number: serial } ).then( function ( info ) {
             var tvs = info.data.tvs;
-            if ( tvs.length === 1 ) { add( tvs[ 0 ].product_sn_id ); return; }
+            if ( tvs.length === 1 ) { return add( tvs[ 0 ].product_sn_id ); }
             if ( tvs.length === 0 ) {
-                showConfirmSweetAlert( 'Serial number not found', 'No TV with serial number ' + SC.esc( serial ) + ' is in the system. Add it to the case anyway?', 'question',
-                    'Add anyway', 'btn btn-warning', 'Cancel', 'btn btn-light', function () { add( '' ); } );
-                return;
+                return Swal.fire( { icon: 'question', title: 'Serial number not found', html: 'No TV with serial number <b>' + SC.esc( serial ) + '</b> is in the system. Add it to the case anyway?',
+                                    showCancelButton: true, confirmButtonText: 'Add anyway', cancelButtonText: 'Cancel', buttonsStyling: false,
+                                    customClass: { confirmButton: 'btn btn-warning', cancelButton: 'btn btn-light' } } )
+                    .then( function ( r ) { return r.isConfirmed ? add( '' ) : false; } );
             }
             var options = {};
             var mine = '';
@@ -957,10 +964,58 @@ var SC = {
                 options[ t.product_sn_id ] = ( t.customer_name || 'No customer' ) + ' · ' + t.product_name + ' · ' + t.warranty_status;
                 if ( t.customer_id === SC.current.case.customer_id ) { mine = t.product_sn_id; }
             } );
-            Swal.fire( { title: tvs.length + ' TVs carry this serial number', text: 'Which one is it?', input: 'select', inputOptions: options, inputValue: mine,
-                         showCancelButton: true, confirmButtonText: 'Add', buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary', cancelButton: 'btn btn-light' } } )
-                .then( function ( r ) { if ( r.isConfirmed ) { add( r.value ); } } );
-        } ).catch( SC.toastError );
+            return Swal.fire( { title: tvs.length + ' TVs carry this serial number', text: 'Which one is it?', input: 'select', inputOptions: options, inputValue: mine,
+                                showCancelButton: true, confirmButtonText: 'Add', buttonsStyling: false, customClass: { confirmButton: 'btn btn-primary', cancelButton: 'btn btn-light' } } )
+                .then( function ( r ) { return r.isConfirmed ? add( r.value ) : false; } );
+        } ).catch( function ( message ) { SC.toastError( message ); return false; } );
+    },
+
+    /**
+     * @description Photos of barcodes on the TVs tab (1.0.30): each photo opens the crop / rotate / zoom editor, the
+     *              edited picture is read by the server decoder and the serial is added like a typed one. Several
+     *              photos are done one after the other; closing the editor skips that photo.
+     * @param {File[]} files - Photos chosen
+     * @returns {void}
+     */
+    readTvPhotos : function ( files ) {
+        files = files.filter( function ( f ) { return /^image\//.test( f.type ) || /\.(jpe?g|png|webp|heic|heif)$/i.test( f.name ); } );
+        if ( files.length === 0 ) { return; }
+        var added = 0, unread = [], skipped = 0;
+        var status = function ( html ) { $( '#scd_tv_photo_status' ).html( html ); };   // Looked up each time: adding a TV redraws the tab
+        var next = function ( i ) {
+            if ( i >= files.length ) {
+                status( 'Photo of the barcode: crop it to the barcode, the serial number is read from it.' );
+                if ( files.length > 1 || unread.length ) {
+                    var text = added + ' TV' + ( added === 1 ? '' : 's' ) + ' added from ' + files.length + ' photo' + ( files.length > 1 ? 's' : '' ) + '.';
+                    if ( skipped ) { text += ' ' + skipped + ' skipped.'; }
+                    if ( unread.length ) { text += ' No readable barcode on: ' + unread.join( ', ' ) + '. Crop closer to the barcode, or type the serial number.'; }
+                    showSimpleToast( unread.length ? 'warning' : 'success', text );
+                }
+                return;
+            }
+            var file = files[ i ];
+            status( 'Photo ' + ( i + 1 ) + ' of ' + files.length + ': crop it to the barcode…' );
+            SCMedia.decode( file ).then( function ( canvas ) {
+                return new Promise( function ( resolve ) {
+                    SCMEditor.open( canvas, 0, function ( blob ) { resolve( blob ); }, function () { resolve( null ); },
+                                    'Crop to the barcode' + ( files.length > 1 ? ' (' + ( i + 1 ) + ' of ' + files.length + ')' : '' ) );
+                } );
+            }, function () {
+                throw 'unreadable';                            // e.g. HEIC the browser cannot show
+            } ).then( function ( blob ) {
+                if ( blob === null ) { skipped++; return null; }
+                status( '<span class="spinner-border spinner-border-sm me-2"></span>Reading the barcode of photo ' + ( i + 1 ) + '…' );
+                return new Promise( function ( resolve, reject ) { AppstvScanner.decodeOnServer( blob, 'barcode.jpg', resolve, reject ); } )
+                    .then( function ( serial ) {
+                        $( '#scd_add_serial' ).val( serial );
+                        return SC.addCaseTv( serial );
+                    } )
+                    .then( function ( ok ) { if ( ok ) { added++; } } );
+            } ).catch( function () {
+                unread.push( file.name );
+            } ).then( function () { next( i + 1 ); } );
+        };
+        next( 0 );
     },
 
     /**
