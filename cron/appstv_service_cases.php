@@ -1,8 +1,17 @@
 <?php
 /*
- * Service case scheduled jobs (appstv_crm 1.0.22) - command line only, prints nothing when there is nothing to do.
+ * Service case scheduled jobs (appstv_crm 1.0.28) - command line only, prints nothing when there is nothing to do.
  *
- *   php cron/appstv_service_cases.php media    every minute: converts uploaded videos (one at a time, lock file)
+ *   php cron/appstv_service_cases.php every    every minute: sends queued e-mails (mail), then converts a video (media)
+ *   php cron/appstv_service_cases.php digest   daily at 9:00 Singapore time: each staff member's list of open cases
+ *   php cron/appstv_service_cases.php media    videos only;  ... mail    queued e-mails only
+ *
+ * Option --dry=<folder> (mail / digest, only with a database on this computer): writes the e-mails as .html files
+ * there instead of sending them (tests).
+ *
+ * E-mails (1.0.28, service_case_mails): "new case" e-mails are queued when a case is opened and sent here, up to
+ * APPSTV_CASE_MAIL_BATCH per run, 3 attempts each. The digest is sent once per staff member per day (dedupe_key),
+ * so running it twice does not send twice.
  *
  * Video conversion: ffprobe reads the length; the bitrate is chosen so the MP4 stays under 25 MB (H.264 + AAC,
  * fast start), the picture is reduced (1080 / 720 / 480 / 360 lines) when the length needs it, never enlarged.
@@ -25,16 +34,36 @@ require_once $root . '/plugins/appstv_warranty/webservice/service_case_wizard_fu
 require_once $root . '/plugins/appstv_warranty/webservice/service_case_draft_functions.php';
 require_once $root . '/plugins/appstv_warranty/webservice/service_case_media_functions.php';
 require_once $root . '/plugins/appstv_warranty/webservice/service_case_visit_functions.php';
+require_once $root . '/plugins/appstv_warranty/webservice/service_case_mail_functions.php';
 
 define( 'APPSTV_VIDEO_TARGET_BYTES', 24 * 1024 * 1024 );    // Aim (limit 25 MB, 1 MB spare for the container)
 define( 'APPSTV_VIDEO_LIMIT_BYTES', 25 * 1024 * 1024 );     // Must stay under
 define( 'APPSTV_VIDEO_ATTEMPTS', 3 );                       // Tries before "failed"
 
 $task = isset( $argv[ 1 ] ) ? $argv[ 1 ] : '';
+$dry = '';                                                     // --dry=<folder>: write the e-mails to files (tests)
+foreach( array_slice( $argv, 2 ) as $arg ){
+    if( strpos( $arg, '--dry=' ) === 0 ){ $dry = substr( $arg, 6 ); }
+}
+if( $dry !== '' ){
+    connect();
+    global $con;
+    if( !is_dir( $dry ) || !preg_match( '/^(localhost|127\.0\.0\.1)\b/i', mysqli_get_host_info( $con ) ) ){
+        fwrite( STDERR, "--dry needs an existing folder and a database on this computer\n" );
+        exit( 2 );
+    }
+}
 if( $task === 'media' ){
     appstv_cron_media();
+} else if( $task === 'mail' ){
+    appstv_cron_mail( $dry );
+} else if( $task === 'every' ){
+    appstv_cron_mail( '' );
+    appstv_cron_media();
+} else if( $task === 'digest' ){
+    appstv_cron_digest( $dry );
 } else {
-    fwrite( STDERR, "Usage: php cron/appstv_service_cases.php media\n" );
+    fwrite( STDERR, "Usage: php cron/appstv_service_cases.php every | digest | mail | media [--dry=<folder>]\n" );
     exit( 2 );
 }
 
@@ -154,4 +183,74 @@ function appstv_cron_media(){
                             size_bytes = " . (int) filesize( $mp4 ) . ", width = " . (int) ( $dims[ 0 ] ?? 0 ) . ", height = " . (int) ( $dims[ 1 ] ?? 0 ) . ",
                             duration_s = " . round( $duration, 2 ) . ", error = '', processed_on = '" . create_iso_8601_datetime() . "' WHERE id = $id" );
     @unlink( $src );
+}
+
+
+/**
+ * @description Sends the queued "new case" e-mails (each row is claimed first, so two runs never send the same one)
+ * @param {string} $dry - '' to send, else a folder for the files
+ * @returns {void}
+ */
+function appstv_cron_mail( $dry ){
+    global $con;
+    connect();
+    // Rows left "sending" by a run that was killed go back to the queue
+    appstv_case_db( "UPDATE service_case_mails SET state = 'queued' WHERE state = 'sending' AND kind = 'opened' AND sent_on < '" . ( new DateTime( '-1 hour' ) )->format( 'c' ) . "'" );
+    $rows = appstv_case_rows( "SELECT * FROM service_case_mails WHERE state = 'queued' AND attempts < " . APPSTV_CASE_MAIL_ATTEMPTS . " ORDER BY id LIMIT " . APPSTV_CASE_MAIL_BATCH );
+    foreach( $rows as $row ){
+        $id = (int) $row[ 'id' ];
+        $now = create_iso_8601_datetime();
+        appstv_case_db( "UPDATE service_case_mails SET state = 'sending', attempts = attempts + 1, sent_on = '$now' WHERE id = $id AND state = 'queued'" );
+        if( mysqli_affected_rows( $con ) !== 1 ){ continue; }           // Another run took it
+        $user = appstv_case_mail_user( $row[ 'user_id' ] );
+        if( $user === null || $user[ 'email' ] === '' ){
+            appstv_case_db( "UPDATE service_case_mails SET state = 'skipped', error = '" . ( $user === null ? 'User not found' : 'No valid e-mail address' ) . "' WHERE id = $id" );
+            continue;
+        }
+        $mail = appstv_case_mail_opened( $row[ 'case_id' ], $user[ 'name' ] );
+        if( $mail === null ){
+            appstv_case_db( "UPDATE service_case_mails SET state = 'skipped', error = 'Case not found' WHERE id = $id" );
+            continue;
+        }
+        $error = appstv_case_mail_send( $user[ 'email' ], $mail[ 0 ], $mail[ 1 ], $dry );
+        $state = ( $error === '' ) ? 'sent' : ( ( (int) $row[ 'attempts' ] + 1 >= APPSTV_CASE_MAIL_ATTEMPTS ) ? 'failed' : 'queued' );
+        appstv_case_db( "UPDATE service_case_mails SET state = '$state', error = '" . escape_string( $error ) . "', to_email = '" . escape_string( $user[ 'email' ] ) . "',
+                                subject = '" . escape_string( mb_substr( $mail[ 0 ], 0, 250 ) ) . "', sent_on = '" . create_iso_8601_datetime() . "' WHERE id = $id" );
+        if( $error !== '' ){ error_log( "appstv_service_cases mail $id: $error" ); }
+    }
+}
+
+/**
+ * @description Sends each staff member the list of their cases that are not closed (once per day: dedupe_key)
+ * @param {string} $dry - '' to send, else a folder for the files
+ * @returns {void}
+ */
+function appstv_cron_digest( $dry ){
+    global $con;
+    connect();
+    set_time_limit( 0 );
+    $today = appstv_case_today();
+    $staff = appstv_case_rows( "SELECT CONVERT( u.user_id USING utf8mb4 ) AS user_id FROM users u JOIN roles r ON r.role_id = u.role_id
+                                WHERE r.role_name IN ( " . APPSTV_CASE_STAFF_ROLES . " ) ORDER BY u.id" );
+    foreach( $staff as $s ){
+        $user = appstv_case_mail_user( $s[ 'user_id' ] );
+        if( $user === null ){ continue; }
+        $mail = appstv_case_mail_digest( $s[ 'user_id' ], $user[ 'name' ], $today );
+        if( $mail === null ){ continue; }                               // No open case: no e-mail
+        $e_user = escape_string( $s[ 'user_id' ] );
+        $e_key = escape_string( 'digest:' . $s[ 'user_id' ] . ':' . $today );
+        $now = create_iso_8601_datetime();
+        appstv_case_db( "INSERT IGNORE INTO service_case_mails ( kind, case_id, user_id, dedupe_key, state, attempts, subject, created_on, sent_on )
+                         VALUES ( 'digest', NULL, '$e_user', '$e_key', 'sending', 1, '" . escape_string( mb_substr( $mail[ 0 ], 0, 250 ) ) . "', '$now', '$now' )" );
+        if( mysqli_affected_rows( $con ) !== 1 ){ continue; }           // Already sent today
+        $id = (int) mysqli_insert_id( $con );
+        if( $user[ 'email' ] === '' ){
+            appstv_case_db( "UPDATE service_case_mails SET state = 'skipped', error = 'No valid e-mail address' WHERE id = $id" );
+            continue;
+        }
+        $error = appstv_case_mail_send( $user[ 'email' ], $mail[ 0 ], $mail[ 1 ], $dry );
+        appstv_case_db( "UPDATE service_case_mails SET state = '" . ( $error === '' ? 'sent' : 'failed' ) . "', error = '" . escape_string( $error ) . "',
+                                to_email = '" . escape_string( $user[ 'email' ] ) . "', sent_on = '" . create_iso_8601_datetime() . "' WHERE id = $id" );
+        if( $error !== '' ){ error_log( "appstv_service_cases digest {$s['user_id']}: $error" ); }
+    }
 }

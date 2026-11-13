@@ -483,6 +483,9 @@ function appstv_case_open_answers( $a, $draft_id ){
     if( $draft_id ){
         appstv_case_db( "UPDATE service_case_media SET case_id = $case_id WHERE draft_id = " . (int) $draft_id . " AND case_id IS NULL AND deleted_on = ''" );
     }
+
+    // E-mail to each assigned staff member, sent by the every-minute job (1.0.28)
+    appstv_case_mail_queue( $case_id, $a[ 'staff' ] );
     return array( 'case_id' => $case_id, 'tv_case_ids' => $tv_case_ids );
 }
 
