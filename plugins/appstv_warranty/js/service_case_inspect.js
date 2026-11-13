@@ -11,6 +11,8 @@
    rules live in one place. Damage / working photos are added in the step (camera or files, the crop editor) and
    belong to the TV and the step. Only one TV is inspected at a time.
    1.0.33: "To be taken to the office" -> the customer signs the consent (SGN, below) -> "At the office".
+   1.0.34: at the office the office marks it repaired or replaced (step office) -> "Ready to deliver" -> delivered
+           and installed with photos (step deliver) -> "Delivered". RTV (below): the Returned TVs screen.
    ============================================= */
 
 var SCI = {
@@ -21,10 +23,12 @@ var SCI = {
     photos : {},                                               // Photos uploaded since the case was loaded: { 'tv|purpose': [ media ] }
     saving : false,                                            // A step is being sent
 
-    PURPOSE : { outside: 'outside_damage', inside: 'inside_liquid', repair: 'working' },
-    STEP_TITLES : { warranty: 'Warranty', outside: 'Outside check', paid: 'Paid repair', open_here: 'Open the TV here', inside: 'Inside check', repair: 'Repair on site' },
+    PURPOSE : { outside: 'outside_damage', inside: 'inside_liquid', repair: 'working', deliver: 'delivery' },
+    STEP_TITLES : { warranty: 'Warranty', outside: 'Outside check', paid: 'Paid repair', open_here: 'Open the TV here', inside: 'Inside check', repair: 'Repair on site',
+                    office: 'At the office', deliver: 'Delivery' },
+    readyTvs : null,                                           // Returned TVs ready to give out (office step), loaded once per case window
     RESULT_BADGE : { not_covered: 'badge-sc-bad', declined: 'badge-sc-bad', repaired: 'badge-sc-ok', waiting_part: 'badge-sc-amber',
-                     to_office: 'badge-sc-window', at_office: 'badge-sc-office', revisit: 'badge-sc-amber' },
+                     to_office: 'badge-sc-window', at_office: 'badge-sc-office', revisit: 'badge-sc-amber', ready: 'badge-sc-ready', delivered: 'badge-sc-ok' },
 
     /**
      * @description The inspection of a TV of the open case
@@ -81,9 +85,20 @@ var SCI = {
             html += '<div class="sci-strip is-sign"><i class="fa-solid fa-signature"></i><span>The customer signs the consent before the TV is taken to the office</span>'
                   + ( SCI.canOpen( tv, closed ) ? '<button type="button" class="btn btn-sm btn-primary" data-sci="consent" data-tv-id="' + tv.id + '">Customer signs</button>' : '' ) + '</div>';
         }
+        var rep = SCI.replacementFor( tv.id );                // 1.0.34: a replacement TV given on this case
+        if ( rep ) {
+            html += '<div class="sci-strip is-ready"><i class="fa-solid fa-right-left"></i><span>Replacement TV for <span class="font-monospace">' + SC.esc( rep.serial ) + '</span>'
+                  + ( rep.x.delivered_on ? ', delivered ' + SC.esc( SGN.sgt( rep.x.delivered_on ) ) : ', to be delivered' ) + '</span></div>';
+        }
+        if ( x && ( x.result === 'ready' || x.result === 'delivered' ) ) {
+            html += '<div class="sci-strip is-ready"><i class="fa-solid ' + ( x.result === 'ready' ? 'fa-truck' : 'fa-circle-check' ) + '"></i><span>'
+                  + ( x.office_result === 'replaced' ? 'Beyond repair, replaced by <span class="font-monospace">' + SC.esc( x.new_serial ) + '</span>' : 'Repaired at the office' )
+                  + ( x.result === 'ready' ? ' · ready to deliver' : ' · delivered ' + SC.esc( SGN.sgt( x.delivered_on ) ) ) + '</span></div>';
+        }
         if ( x && x.consent ) {
             var k = x.consent;
-            html += '<div class="sci-strip is-office"><i class="fa-solid fa-building"></i><span>At the office · consent signed by ' + SC.esc( ( k.title ? k.title + ' ' : '' ) + k.signer_name )
+            html += '<div class="sci-strip is-office"><i class="fa-solid fa-building"></i><span>' + ( x.result === 'at_office' ? 'At the office' : 'Taken to the office' )
+                  + ' · consent signed by ' + SC.esc( ( k.title ? k.title + ' ' : '' ) + k.signer_name )
                   + ', ' + SC.esc( SGN.sgt( k.signed_on ) ) + ' · taken by ' + SC.esc( k.staff_name ) + '</span>'
                   + '<button type="button" class="btn btn-sm btn-light" data-sci="view-consent" data-tv-id="' + tv.id + '"><i class="fa-solid fa-print"></i> View / print</button></div>';
         }
@@ -101,7 +116,24 @@ var SCI = {
      * @returns {boolean}
      */
     canOpen : function ( tv, closed ) {
-        return !!SC.current.can_inspect && !closed && ( tv.chain === null || tv.chain.is_current );
+        var x = SCI.of( tv.id );
+        var replacedHere = !!( x && x.office_result === 'replaced' );   // 1.0.34: goes on to delivery although replaced
+        return !!SC.current.can_inspect && !closed && ( tv.chain === null || tv.chain.is_current || replacedHere ) && !SCI.replacementFor( tv.id );
+    },
+
+    /**
+     * @description The inspection whose replacement TV this is (1.0.34)
+     * @param {number} tvId - service_case_tvs.id
+     * @returns {object|null} { x: inspection, serial: serial number of the TV it replaced }
+     */
+    replacementFor : function ( tvId ) {
+        var found = null;
+        $.each( ( SC.current && SC.current.inspections ) || {}, function ( key, x ) {
+            if ( x.new_case_tv_id === tvId ) {
+                $.each( SC.current.tvs, function ( i, t ) { if ( t.id === x.case_tv_id ) { found = { x: x, serial: t.serial_number }; } } );
+            }
+        } );
+        return found;
     },
 
     /**
@@ -142,8 +174,18 @@ var SCI = {
             SCI.draft.reason = $( this ).attr( 'data-sci-reason' );
             SCI.render( true );
         } );
-        $m.on( 'input', '[data-sci-text]', function () { SCI.draft[ $( this ).attr( 'data-sci-text' ) ] = $( this ).val(); } );
-        $( '#sc_case_modal' ).on( 'hidden.bs.modal', function () { SCI.tvId = null; SCI.view = null; SCI.photos = {}; } );
+        $m.on( 'input change', '[data-sci-text]', function () { SCI.draft[ $( this ).attr( 'data-sci-text' ) ] = $( this ).val(); } );
+        $m.on( 'click', '[data-sci-ready]', function () {    // 1.0.34: a returned TV ready to give out
+            SCI.draft.new_serial = $( this ).attr( 'data-sci-ready' );
+            $( '#sci_new_serial' ).val( SCI.draft.new_serial );
+        } );
+        $m.on( 'click', '[data-sci="scan-new"]', function () {
+            AppstvScanner.open( { title: 'Scan the replacement TV', continuous: false, onScan: function ( serial ) {
+                SCI.draft.new_serial = serial;
+                $( '#sci_new_serial' ).val( serial );
+            } } );
+        } );
+        $( '#sc_case_modal' ).on( 'hidden.bs.modal', function () { SCI.tvId = null; SCI.view = null; SCI.photos = {}; SCI.readyTvs = null; } );
     },
 
     /**
@@ -203,7 +245,12 @@ var SCI = {
      * @param {object} x - Inspection
      * @returns {string} Step key, '' = finished
      */
-    shownStep : function ( x ) { return SCI.view || x.next; },
+    shownStep : function ( x ) {
+        if ( SCI.view || x.next ) { return SCI.view || x.next; }
+        if ( x.result === 'at_office' && SC.current.can_office ) { return 'office'; }   // 1.0.34
+        if ( x.result === 'ready' ) { return 'deliver'; }
+        return '';
+    },
 
     /**
      * @description Answer of a step as stored (to start the draft from)
@@ -218,6 +265,12 @@ var SCI = {
         if ( step === 'open_here' ) { return { value: x.open_here, reason: x.no_open_reason, note: x.no_open_note }; }
         if ( step === 'inside' ) { return { value: x.inside, note: x.inside_note }; }
         if ( step === 'repair' ) { return { value: x.repair, note: x.repair_note, part_name: x.part_name }; }
+        if ( step === 'office' ) {                            // Replacement model: the TV's own, else the first model with serial numbers
+            var ch = SCI.tvChain(), models = $.grep( window.APPSTV_PRODUCTS || [], function ( p ) { return p.has_sn; } );
+            var own = ch && $.grep( models, function ( p ) { return p.product_id === ch.product_id; } ).length ? ch.product_id : ( models[ 0 ] ? models[ 0 ].product_id : '' );
+            return { value: '', note: '', new_serial: '', new_product_id: own };
+        }
+        if ( step === 'deliver' ) { return { value: 'delivered', note: '' }; }
         return {};
     },
 
@@ -261,6 +314,10 @@ var SCI = {
                       office: 'Take to the office: ' + x.repair_note, other: 'Not repaired here: ' + x.repair_note };
             rows.push( [ 'repair', r[ x.repair ] || x.repair ] );
         }
+        if ( x.office_result ) {                              // 1.0.34
+            rows.push( [ 'office', x.office_result === 'replaced' ? 'Beyond repair, replaced by ' + x.new_serial + ': ' + x.office_note : 'Repaired at the office: ' + x.office_note ] );
+        }
+        if ( x.delivered_on ) { rows.push( [ 'deliver', 'Delivered and installed' + ( x.delivery_note ? ': ' + x.delivery_note : '' ) ] ); }
         return rows;
     },
 
@@ -398,6 +455,34 @@ var SCI = {
             if ( v === 'office' ) { html += SCI.textBox( 'note', 'Why does it have to go to the office?', true, 'e.g. Panel fault, needs the workshop', 2 ); }
             if ( v === 'other' ) { html += SCI.textBox( 'note', 'Why was it not repaired?', true, '', 2 ); }
         }
+        if ( step === 'office' ) {                            // 1.0.34
+            html += '<div class="sci-q">The TV is at the office. What did the office do?</div><div class="scw-options">'
+                  + SCI.option( 'repaired', 'Repaired at the office', 'The TV works again', 'fa-screwdriver-wrench' )
+                  + SCI.option( 'replaced', 'Beyond repair: replace it', 'A replacement TV is given', 'fa-right-left' ) + '</div>';
+            if ( v === 'repaired' ) { html += SCI.textBox( 'note', 'What was repaired?', true, 'e.g. Replaced the T-Con board', 3 ); }
+            if ( v === 'replaced' ) {
+                var models = '';
+                $.each( window.APPSTV_PRODUCTS || [], function ( i, p ) {
+                    if ( !p.has_sn && p.product_id !== SCI.draft.new_product_id ) { return; }
+                    models += '<option value="' + SC.esc( p.product_id ) + '"' + ( p.product_id === SCI.draft.new_product_id ? ' selected' : '' ) + '>' + SC.esc( p.name ) + '</option>';
+                } );
+                html += SCI.textBox( 'note', 'Why can it not be repaired?', true, 'e.g. Panel cracked inside, no spare panel', 2 )
+                      + '<div class="mt-3"><label class="form-label required" for="sci_new_serial">Serial number of the replacement TV</label>'
+                      + '<div class="input-group"><input type="text" id="sci_new_serial" class="form-control form-control-solid font-monospace" maxlength="50" autocapitalize="characters" autocomplete="off"'
+                      + ' data-sci-text="new_serial" value="' + SC.esc( SCI.draft.new_serial || '' ) + '" placeholder="Scan or type"/>'
+                      + '<button type="button" class="btn btn-primary" data-sci="scan-new" title="Scan with the camera" aria-label="Scan with the camera"><i class="fa-solid fa-camera"></i></button></div></div>'
+                      + '<div class="mt-3"><label class="form-label" for="sci_new_model">Model of the replacement TV</label>'
+                      + '<select id="sci_new_model" class="form-select form-select-solid" data-sci-text="new_product_id">' + models + '</select>'
+                      + '<div class="form-text">A repaired returned TV keeps its own model.</div></div>'
+                      + '<div id="sci_ready_tvs" class="mt-3"></div>';
+            }
+        }
+        if ( step === 'deliver' ) {
+            var what = ( x.office_result === 'replaced' ) ? 'the replacement TV ' + x.new_serial : 'the repaired TV';
+            html += '<div class="sci-q">Deliver and install ' + SC.esc( what ) + ' at the customer, then add a photo of it installed and working.</div>'
+                  + SCI.photoBox( 'Photos of the TV installed and working', true )
+                  + SCI.textBox( 'note', 'Note', false, 'e.g. Installed on the wall bracket, the customer checked it', 2 );
+        }
         return html;
     },
 
@@ -448,7 +533,8 @@ var SCI = {
                 repaired : x.locked ? 'The repair is in the warranty records of this TV.' : 'Repaired. (This TV has no warranty record, so the repair is kept on the case only.)',
                 waiting_part : 'Finish the visit with "Needs another visit: spare part needed" and plan the next visit.',
                 to_office : 'Before the TV is taken, the customer signs the consent on this phone.',
-                at_office : 'The TV is at the office. Finish the visit with "Needs another visit: TV taken to the office".',
+                at_office : SC.current.can_office ? 'The TV is at the office.' : 'The TV is at the office. The office marks it as repaired or replaced.',
+                delivered : 'Delivered and installed.',
                 revisit : 'Finish the visit with "Needs another visit" and plan the next visit.'
             };
             html += '<div class="sci-result"><div>' + SCI.badge( x ) + '</div><div class="fs-7 mt-2">' + SC.esc( hints[ x.result ] || '' ) + '</div>'
@@ -459,6 +545,26 @@ var SCI = {
         SCI.keepGallery();
         $p.html( '<div class="sci-box">' + html + '</div>' );
         SCI.mountGallery( step );
+        if ( step === 'office' && SCI.draft.value === 'replaced' ) { SCI.showReadyTvs(); }
+    },
+
+    /**
+     * @description Lists the returned TVs that are repaired and ready to give out (office step, 1.0.34); a tap puts
+     *              the serial number in the replacement field
+     * @returns {void}
+     */
+    showReadyTvs : function () {
+        var draw = function () {
+            var ready = ( SCI.readyTvs || [] ).filter( function ( t ) { return t.state === 'repaired_stock'; } );
+            if ( !ready.length ) { $( '#sci_ready_tvs' ).html( '' ); return; }
+            $( '#sci_ready_tvs' ).html( '<div class="form-label">Returned TVs ready to give out</div><div class="scw-chips">'
+                + $.map( ready, function ( t ) {
+                      return '<button type="button" class="scw-chip" data-sci-ready="' + SC.esc( t.serial_number ) + '"><span class="font-monospace me-2">' + SC.esc( t.serial_number ) + '</span>'
+                           + '<span class="text-muted fw-normal fs-8">' + SC.esc( t.product_name ) + '</span></button>';
+                  } ).join( '' ) + '</div>' );
+        };
+        if ( SCI.readyTvs !== null ) { draw(); return; }
+        SC.post( { what_do_you_want: 'appstv_returned_tv_list' } ).then( function ( info ) { SCI.readyTvs = info.data.tvs; draw(); } ).catch( function () { SCI.readyTvs = []; } );
     },
 
     /**
@@ -536,8 +642,16 @@ var SCI = {
             }
             SCI.render();
         } ).catch( function ( message ) {
-            SC.toastError( message );
             $btn.prop( 'disabled', false );
+            if ( /^DUPLICATE:/.test( String( message ) ) ) {     // 1.0.34: the replacement serial is used by another TV
+                Swal.fire( { icon: 'question', title: 'Serial number used before', text: String( message ).replace( /^DUPLICATE:/, '' ), showCancelButton: true,
+                             confirmButtonText: 'Save as a separate TV', cancelButtonText: 'Cancel', buttonsStyling: false,
+                             customClass: { confirmButton: 'btn btn-warning', cancelButton: 'btn btn-light' } } ).then( function ( r ) {
+                    if ( r.isConfirmed ) { SCI.draft.confirm_duplicate = 1; SCI.save(); }
+                } );
+                return;
+            }
+            SC.toastError( message );
         } ).then( function () { SCI.saving = false; } );
     },
 
@@ -821,3 +935,82 @@ var SGN = {
 };
 
 $( function () { SGN.bind(); } );
+/* =============================================
+   RTV (v1.0.34): Returned TVs - the TVs that were replaced and came back to the office. The office marks one as
+   repaired (ready to give out: it can then be given to another customer as a replacement) or as faulty again.
+   ============================================= */
+var RTV = {
+
+    /**
+     * @description Shows the list (opened from the Returned TVs button of the Service Cases page)
+     * @returns {void}
+     */
+    open : function () {
+        SC.post( { what_do_you_want: 'appstv_returned_tv_list' } ).then( function ( info ) {
+            var d = info.data, e = SC.esc;
+            var html = '<div class="text-start rtv-list">';
+            if ( !d.tvs.length ) { html += '<div class="text-muted text-center py-6">No returned TVs at the office.</div>'; }
+            $.each( d.tvs, function ( i, t ) {
+                var ready = ( t.state === 'repaired_stock' );
+                html += '<div class="rtv-item"><div class="rtv-main"><div><span class="font-monospace fw-bold">' + e( t.serial_number ) + '</span>'
+                      + ' <span class="badge ' + ( ready ? 'badge-sc-ok' : 'badge-sc-bad' ) + '">' + e( t.state_text ) + '</span></div>'
+                      + '<div class="text-muted fs-7">' + e( t.product_name || 'Model not known' ) + ( t.case_label ? ' · from ' + e( t.case_label ) : '' ) + '</div>'
+                      + ( t.note ? '<div class="fs-7">' + e( t.note ) + '</div>' : '' )
+                      + '<div class="text-muted fs-8">' + e( t.by || 'Someone' ) + ' · ' + e( SC.showStamp( t.on ) ) + '</div></div>'
+                      + ( d.can_set ? '<button type="button" class="btn btn-sm ' + ( ready ? 'btn-light' : 'btn-light-success' ) + '" data-rtv="' + ( ready ? 'returned' : 'repaired_stock' ) + '"'
+                                      + ' data-sn="' + e( t.product_sn_id ) + '" data-serial="' + e( t.serial_number ) + '">' + ( ready ? 'Faulty again' : 'Mark repaired' ) + '</button>' : '' )
+                      + '</div>';
+            } );
+            html += '</div>';
+            Swal.fire( {
+                title : 'Returned TVs',
+                html : html,
+                width : 640,
+                heightAuto : false,
+                confirmButtonText : 'Close',
+                buttonsStyling : false,
+                customClass : { confirmButton: 'btn btn-primary' },
+                didOpen : function ( popup ) {
+                    $( popup ).on( 'click', '[data-rtv]', function () {
+                        RTV.set( $( this ).attr( 'data-sn' ), $( this ).attr( 'data-serial' ), $( this ).attr( 'data-rtv' ) );
+                    } );
+                }
+            } );
+        } ).catch( SC.toastError );
+    },
+
+    /**
+     * @description Changes the state of a returned TV (repaired needs a note), then shows the list again
+     * @param {string} productSnId - The TV
+     * @param {string} serial - Its serial number
+     * @param {string} state - repaired_stock | returned
+     * @returns {void}
+     */
+    set : function ( productSnId, serial, state ) {
+        var send = function ( note ) {
+            return SC.post( { what_do_you_want: 'appstv_returned_tv_set', product_sn_id: productSnId, state: state, note: note || '' } );
+        };
+        if ( state !== 'repaired_stock' ) {
+            send( '' ).then( function ( info ) { showSimpleToast( 'success', info.message ); RTV.open(); } ).catch( SC.toastError );
+            return;
+        }
+        Swal.fire( {
+            title : 'TV ' + SC.esc( serial ) + ' repaired',
+            input : 'textarea',
+            inputLabel : 'What was repaired?',
+            inputPlaceholder : 'e.g. New panel fitted, tested for 2 hours',
+            inputAttributes : { maxlength: 2000 },
+            showCancelButton : true,
+            confirmButtonText : 'Ready to give out',
+            buttonsStyling : false,
+            customClass : { confirmButton: 'btn btn-success', cancelButton: 'btn btn-light' },
+            preConfirm : function ( note ) {
+                if ( !$.trim( note || '' ) ) { Swal.showValidationMessage( 'Write what was repaired.' ); return false; }
+                return send( $.trim( note ) ).catch( function ( message ) { Swal.showValidationMessage( message ); return false; } );
+            }
+        } ).then( function ( r ) {
+            if ( r.isConfirmed && r.value ) { showSimpleToast( 'success', r.value.message ); }
+            RTV.open();
+        } );
+    }
+};

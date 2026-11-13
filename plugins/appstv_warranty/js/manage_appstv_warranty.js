@@ -132,6 +132,44 @@ var WarrantyCheck = (function () {
     }
 
     /**
+     * @description The chain of TVs of one warranty, oldest first (1.0.34): original -> replaced by -> ... with the
+     *              TV that was looked up marked
+     * @param {object} history - One entry of record.histories
+     * @returns {string} HTML ('' when the TV was never replaced)
+     */
+    function _chainHtml( history ) {
+        var replacements = $.grep( history.events || [], function ( ev ) { return ev.type === 'replacement'; } );
+        if ( replacements.length === 0 ) { return ''; }
+        var html = '<div class="warranty-chain"><div class="warranty-chain-item' + ( history.role === 'original' ? ' is-this' : '' ) + '">'
+                 + _serialHtml( history.original_serial_number ) + '<small>' + ( history.original_sale ? 'sold ' + _formatDate( history.original_sale.invoice_date ) : 'original TV' ) + '</small>'
+                 + ( history.role === 'original' ? '<span class="badge badge-light-primary">this TV</span>' : '' ) + '</div>';
+        $.each( replacements, function ( i, ev ) {
+            html += '<div class="warranty-chain-arrow" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></div>'
+                  + '<div class="warranty-chain-item' + ( ev.is_scanned_tv ? ' is-this' : '' ) + '">' + _serialHtml( ev.new_serial_number )
+                  + '<small>replacement ' + _formatDate( ev.date_of_service ) + '</small>'
+                  + ( ev.is_scanned_tv ? '<span class="badge badge-light-primary">this TV</span>' : '' ) + '</div>';
+        } );
+        return html + '</div>';
+    }
+
+    /**
+     * @description The office stock history of a TV (1.0.34): returned faulty, repaired, given out again
+     * @param {object|null} stock - record.stock
+     * @returns {string} HTML
+     */
+    function _stockHtml( stock ) {
+        if ( !stock ) { return ''; }
+        var html = '<div class="warranty-history mt-4"><div class="warranty-history-title">At the office: ' + _esc( stock.state_text ) + '</div><ol class="warranty-events">';
+        $.each( stock.log || [], function ( i, l ) {
+            html += '<li><div class="fw-bold">' + _formatDate( ( l.on || '' ).substr( 0, 10 ) ) + ' &middot; ' + _esc( l.state_text ) + '</div>'
+                  + ( l.case_label ? '<div>Case ' + _esc( l.case_label ) + '</div>' : '' )
+                  + ( l.note ? '<div class="text-gray-700">' + _esc( l.note ) + '</div>' : '' )
+                  + ( l.by ? '<div class="text-gray-500">' + _esc( l.by ) + '</div>' : '' ) + '</li>';
+        } );
+        return html + '</ol></div>';
+    }
+
+    /**
      * @description Builds one warranty history: original TV, sale, warranty, extended warranty, status and events
      * @param {object} history - One entry of record.histories
      * @returns {string} HTML
@@ -142,6 +180,7 @@ var WarrantyCheck = (function () {
             : 'Given as a replacement under the warranty of TV ' + _esc( history.original_serial_number );   // Heading of this history
         var html  = '<div class="warranty-history mt-4">';
         html += '<div class="warranty-history-title">' + title + '</div>';
+        html += _chainHtml( history );                     // 1.0.34
         html += '<table class="table table-bordered table-row-dashed fs-7 gy-2 gx-3 mb-2"><tbody>';
         html += _row( 'Warranty Status', '<span class="' + _statusClass( history.warranty_status ) + ' fs-7 fw-bold">' + _esc( history.warranty_status ) + '</span>' );
         if ( history.role !== 'original' ) {
@@ -216,6 +255,7 @@ var WarrantyCheck = (function () {
             $.each( record.histories || [], function ( j, history ) {
                 html += _historyHtml( history );
             } );
+            html += _stockHtml( record.stock );            // 1.0.34
             html += '</div>';
 
             if ( i < data.length - 1 ) {

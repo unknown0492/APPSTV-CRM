@@ -23,6 +23,7 @@ $sc_assets = dirname( __DIR__, 3 ) . '/assets/appstv';
             <div class="card-header min-h-50px flex-wrap">
                 <div class="card-title"><h3 class="mt-2">Service Cases</h3></div>
                 <div class="card-toolbar">
+                    <button type="button" class="btn btn-light-primary btn-sm me-2 d-none" id="sc_returned"><i class="fa-solid fa-box-open"></i> Returned TVs</button>
                     <button type="button" class="btn btn-primary btn-sm" id="sc_new_case"><i class="fa-solid fa-plus"></i> New case</button>
                 </div>
             </div>

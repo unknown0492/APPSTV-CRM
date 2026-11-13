@@ -640,3 +640,11 @@
     .sgn-pad canvas { height: 220px; }
     .sgn-foot .btn { flex: 1 1 0; }
 }
+/* v1.0.34 - Office repair / replacement, delivery, Returned TVs */
+.badge-sc-ready { background: #ccfbf1; color: #115e59; }
+.sci-strip.is-ready { background: #f0fdfa; color: #115e59; }
+.rtv-list { max-height: 60vh; overflow-y: auto; }
+.rtv-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eff2f5; }
+.rtv-item:last-child { border-bottom: 0; }
+.rtv-main { flex: 1 1 auto; min-width: 0; }
+.rtv-main > div + div { margin-top: 2px; }

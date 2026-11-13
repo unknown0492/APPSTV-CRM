@@ -110,3 +110,10 @@
     border-radius: 4px;
     padding: 4px 6px;
 }
+/* v1.0.34 - Chain of TVs of a warranty (original -> replacements) */
+.warranty-chain { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 4px 0 12px; }
+.warranty-chain-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border: 1px solid #e4e6ef; border-radius: 0.65rem; background: #fff; }
+.warranty-chain-item small { color: #5e6278; }
+.warranty-chain-item.is-this { border-color: #0b5cad; background: #f1f6fd; }
+.warranty-chain-arrow { display: flex; align-items: center; color: #a1a5b7; }
+.warranty-chain-arrow i { color: inherit; }

@@ -30,7 +30,9 @@ define( 'APPSTV_INSPECT_RESULTS', array(
     'waiting_part' => 'Waiting for a spare part',
     'to_office'    => 'To be taken to the office',
     'at_office'    => 'At the office',                           // 1.0.33: consent signed, TV taken
-    'revisit'      => 'Needs another visit'
+    'revisit'      => 'Needs another visit',
+    'ready'        => 'Ready to deliver',                        // 1.0.34: repaired / replaced at the office
+    'delivered'    => 'Delivered'                                // 1.0.34: delivered and installed
 ) );
 define( 'APPSTV_INSPECT_NO_OPEN', array(
     'no_space'    => 'No space to work',
@@ -38,7 +40,7 @@ define( 'APPSTV_INSPECT_NO_OPEN', array(
     'not_allowed' => 'Customer does not allow it',
     'other'       => 'Other'
 ) );
-define( 'APPSTV_INSPECT_PURPOSES', array( 'outside_damage', 'inside_liquid', 'working' ) );
+define( 'APPSTV_INSPECT_PURPOSES', array( 'outside_damage', 'inside_liquid', 'working', 'delivery' ) );   // delivery: 1.0.34
 define( 'APPSTV_INSPECT_NOTE_MAX', 2000 );
 define( 'APPSTV_CONSENT_TITLES', array( 'Mr.', 'Ms.', 'Mrs.', 'Dr.', '' ) );   // '' = no title (1.0.33)
 define( 'APPSTV_CONSENT_MAX_BYTES', 3 * 1024 * 1024 );                         // Largest signature picture sent
@@ -142,6 +144,15 @@ function appstv_case_inspect_item( $r ){
                               'shown_at' => $row[ 'shown_at' ], 'signed_on' => $row[ 'signed_on' ], 'media_id' => (int) $row[ 'media_id' ] );
         }
     }
+    // 1.0.34: at the office -> ready to deliver -> delivered
+    $new_serial = '';
+    if( $r[ 'office_result' ] !== '' ){
+        $result = ( $r[ 'delivered_on' ] !== '' ) ? 'delivered' : 'ready';
+        if( (string) $r[ 'new_case_tv_id' ] !== '' ){
+            $row = mysqli_fetch_assoc( appstv_case_db( "SELECT serial_number FROM service_case_tvs WHERE id = " . (int) $r[ 'new_case_tv_id' ] ) );
+            $new_serial = $row ? $row[ 'serial_number' ] : '';
+        }
+    }
     $tv = (int) $r[ 'case_tv_id' ];
     return array(
         'id' => (int) $r[ 'id' ], 'case_tv_id' => $tv, 'warranty' => $r[ 'warranty' ], 'paid' => $r[ 'paid' ],
@@ -152,10 +163,14 @@ function appstv_case_inspect_item( $r ){
         'next' => $next, 'result' => $result, 'result_text' => $result === '' ? '' : APPSTV_INSPECT_RESULTS[ $result ],
         'locked' => (string) $r[ 'pwrp_id' ] !== '' || $consent !== null,
         'consent' => $consent,
+        'office_result' => $r[ 'office_result' ], 'office_note' => (string) $r[ 'office_note' ], 'office_by' => appstv_case_user_name( $r[ 'office_by' ] ),
+        'office_on' => $r[ 'office_on' ], 'new_case_tv_id' => (string) $r[ 'new_case_tv_id' ] === '' ? null : (int) $r[ 'new_case_tv_id' ], 'new_serial' => $new_serial,
+        'delivery_note' => (string) $r[ 'delivery_note' ], 'delivered_by' => appstv_case_user_name( $r[ 'delivered_by' ] ), 'delivered_on' => $r[ 'delivered_on' ],
         'charge' => $r[ 'charge' ], 'charge_by' => appstv_case_user_name( $r[ 'charge_by' ] ), 'charge_on' => $r[ 'charge_on' ],
         'photos' => array( 'outside_damage' => appstv_case_inspect_photos( $tv, 'outside_damage' ),
                            'inside_liquid' => appstv_case_inspect_photos( $tv, 'inside_liquid' ),
-                           'working' => appstv_case_inspect_photos( $tv, 'working' ) ),
+                           'working' => appstv_case_inspect_photos( $tv, 'working' ),
+                           'delivery' => appstv_case_inspect_photos( $tv, 'delivery' ) ),
         'by' => appstv_case_user_name( $r[ 'updated_by' ] ), 'on' => $r[ 'updated_on' ], 'finished_on' => $r[ 'finished_on' ]
     );
 }
@@ -321,7 +336,8 @@ function appstv_case_inspect(){
         if( $case_tv === null ){ throw new AppstvServiceRuleException( "That TV is not on this case." ); }
         $serial = $case_tv[ 'serial_number' ];
         $chain = (string) $case_tv[ 'product_sn_id' ] !== '' ? appstv_case_tv_chain( $case_tv[ 'product_sn_id' ] ) : null;
-        if( $chain !== null && !$chain[ 'is_current' ] ){
+        $replaced_here = mysqli_num_rows( appstv_case_db( "SELECT 1 FROM service_case_inspections WHERE case_tv_id = " . (int) $case_tv[ 'id' ] . " AND office_result = 'replaced'" ) ) > 0;
+        if( $chain !== null && !$chain[ 'is_current' ] && !$replaced_here ){   // 1.0.34: replaced by this inspection = it goes on to delivery
             throw new AppstvServiceRuleException( "TV $serial was already replaced by {$chain['current_serial_number']}. Add that TV to the case and inspect it." );
         }
 
@@ -340,6 +356,11 @@ function appstv_case_inspect(){
         if( $step === 'start' ){ return array( "Inspection of TV $serial.", array( 'inspection' => appstv_case_inspect_item( $r ) ) ); }
         if( $step === 'charge' ){ return appstv_case_inspect_charge( $id, $r, $serial ); }
         if( $step === 'consent' ){ return appstv_case_inspect_consent( $case, $case_tv, $r, $chain ); }
+        if( $step === 'office' || $step === 'deliver' ){          // 1.0.34
+            $in = json_decode( (string) request( 'answer' ), true );
+            if( !is_array( $in ) ){ $in = array(); }
+            return ( $step === 'office' ) ? appstv_case_inspect_office( $case, $case_tv, $r, $chain, $in ) : appstv_case_inspect_deliver( $case, $case_tv, $r, $in );
+        }
         if( (string) $r[ 'consent_id' ] !== '' ){ throw new AppstvServiceRuleException( "TV $serial was taken to the office with the customer's consent; the inspection cannot be changed." ); }
 
         if( (string) $r[ 'pwrp_id' ] !== '' ){ throw new AppstvServiceRuleException( "The repair of TV $serial is already in the warranty records; the inspection cannot be changed." ); }
@@ -396,9 +417,11 @@ function appstv_case_inspect(){
             appstv_case_db( "UPDATE service_cases SET updated_on = '$now' WHERE id = $id" );
         }
 
+        // 1.0.34: the case closes by itself when this was the last TV to finish
+        $closed = ( $result !== $old_result && in_array( $result, APPSTV_CASE_DONE_RESULTS, true ) ) ? appstv_case_auto_close( $id ) : '';
         $r = mysqli_fetch_assoc( appstv_case_db( "SELECT * FROM service_case_inspections WHERE id = " . (int) $r[ 'id' ] ) );
         $message = ( $result === '' ) ? "Saved." : "TV $serial: " . APPSTV_INSPECT_RESULTS[ $result ] . ".";
-        return array( $message, array( 'inspection' => appstv_case_inspect_item( $r ) ) );
+        return array( $message . ( $closed !== '' ? ' ' . $closed : '' ), array( 'inspection' => appstv_case_inspect_item( $r ), 'closed' => $closed !== '' ) );
     } );
 }
 

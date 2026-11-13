@@ -25,7 +25,7 @@ var SC = {
     STATUS_BADGE : { open: 'badge-light-primary', scheduled: 'badge-light-info', visited: 'badge-sc-amber', revisit: 'badge-sc-revisit', closed: 'badge-light' },
     // Why another visit is needed (1.0.26, same keys as APPSTV_CASE_REVISIT_REASONS)
     REVISIT_REASONS : { part: 'Spare part needed', tools: 'More tools needed', not_available: 'Customer or room not available', senior: 'Needs a senior technician',
-                        office: 'TV taken to the office', other: 'Other' },   // office: 1.0.33
+                        office: 'TV taken to the office', deliver: 'Deliver the TV', other: 'Other' },   // office: 1.0.33, deliver: 1.0.34
     PART_STATES : { needed: 'Needed', ordered: 'Ordered', arrived: 'Arrived' },
     OUTCOME : { repaired: 'Repaired', replaced: 'Replaced', no_fault: 'No fault found', not_covered: 'Not covered' },
 
@@ -157,6 +157,7 @@ var SC = {
 
         // New case: the wizard
         $( '#sc_new_case' ).on( 'click', function () { SCW.openNew(); } );
+        $( '#sc_returned' ).on( 'click', function () { RTV.open(); } );   // 1.0.34
 
         // Case details (rebuilt on every load, so delegated)
         var $body = $( '#sc_case_modal' );
@@ -235,6 +236,7 @@ var SC = {
                 $( '[data-sc-chip="overdue"]' ).toggleClass( 'is-zero', d.counts.overdue === 0 );
                 $( '[data-sc-chip="today"]' ).toggleClass( 'is-zero', d.counts.today === 0 );
                 $( '[data-sc-chip="at_office"]' ).toggleClass( 'is-zero', d.counts.at_office === 0 );   // 1.0.33
+                $( '#sc_returned' ).toggleClass( 'd-none', !d.can_returned );                          // 1.0.34
                 $( '#sc_list' ).html( $.map( d.cases, SC.cardHtml ).join( '' ) );
                 $( '#sc_empty' ).toggleClass( 'd-none', d.cases.length > 0 );
             } ).catch( SC.toastError );
@@ -801,9 +803,10 @@ var SC = {
         var tvs = function ( n ) { return n + ' TV' + ( n === 1 ? '' : 's' ); };
         if ( results.length === 0 ) { return null; }
         if ( has( [ 'at_office', 'to_office' ] ) ) { return { result: 'revisit', reason: 'office', text: tvs( count( [ 'at_office', 'to_office' ] ) ) + ' to the office' }; }
+        if ( has( [ 'ready' ] ) ) { return { result: 'revisit', reason: 'deliver', text: tvs( count( [ 'ready' ] ) ) + ' ready to deliver' }; }   // 1.0.34
         if ( has( [ 'waiting_part' ] ) ) { return { result: 'revisit', reason: 'part', part: parts.join( ', ' ), text: tvs( count( [ 'waiting_part' ] ) ) + ' waiting for a spare part' }; }
         if ( has( [ 'revisit' ] ) ) { return { result: 'revisit', reason: 'other', note: notes.join( '\n' ), text: tvs( count( [ 'revisit' ] ) ) + ' not repaired yet' }; }
-        if ( results.every( function ( r ) { return [ 'repaired', 'not_covered', 'declined' ].indexOf( r ) !== -1; } ) ) {
+        if ( results.every( function ( r ) { return [ 'repaired', 'not_covered', 'declined', 'delivered' ].indexOf( r ) !== -1; } ) ) {
             return { result: 'fixed', text: 'every TV is finished' };
         }
         return null;
@@ -898,7 +901,7 @@ var SC = {
             html += '<div class="d-flex flex-wrap gap-2 mt-2">' + SCI.buttonHtml( tv, closed );   // 1.0.32: Inspect first
             if ( ch !== null && ch.psnw_id && ch.is_current ) { html += '<button type="button" class="btn btn-sm btn-primary" data-sc-action="service" data-tv-index="' + SC.current.tvs.indexOf( tv ) + '"><i class="fa-solid fa-screwdriver-wrench"></i> Record service</button>'; }
             if ( ch !== null && ch.psnw_id && ch.warranty_expiry && !ch.has_extended ) { html += '<button type="button" class="btn btn-sm btn-light-success" data-sc-action="extend" data-tv-index="' + SC.current.tvs.indexOf( tv ) + '"><i class="fa-solid fa-shield-halved"></i> Extended warranty</button>'; }
-            if ( !tv.pwrp_id && !SCI.of( tv.id ) ) { html += '<button type="button" class="btn btn-sm btn-light-danger" data-sc-action="remove-tv" data-tv-id="' + tv.id + '"><i class="fa-solid fa-xmark"></i> Remove</button>'; }
+            if ( !tv.pwrp_id && !SCI.of( tv.id ) && !SCI.replacementFor( tv.id ) ) { html += '<button type="button" class="btn btn-sm btn-light-danger" data-sc-action="remove-tv" data-tv-id="' + tv.id + '"><i class="fa-solid fa-xmark"></i> Remove</button>'; }
             html += '</div>';
         }
         html += SCI.cardHtml( tv, closed ) + '</div>';      // 1.0.32: service charge, Inspect, the inspection panel

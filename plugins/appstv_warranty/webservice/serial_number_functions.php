@@ -156,7 +156,8 @@ function appstv_read_sn_info() {
             'product_name'  => $product_sn[ 'product_name' ],
             'serial_number' => $product_sn[ 'serial_number' ],
             'sale'          => appstv_read_sale_of_product_sn( $product_sn_id ),
-            'histories'     => $histories
+            'histories'     => $histories,
+            'stock'         => appstv_case_stock_info( $product_sn_id )   // 1.0.34: returned to the office / repaired / given out again
         );
     }
 

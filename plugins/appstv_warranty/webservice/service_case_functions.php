@@ -589,7 +589,8 @@ function appstv_case_list(){
             FROM service_cases c WHERE c.case_kind <> 'tv'" ) );
         foreach( $counts as $k => $v ){ $counts[ $k ] = (int) $v; }
 
-        return array( count( $cases ) . " case(s).", array( 'cases' => $cases, 'counts' => $counts, 'today' => $today ) );
+        return array( count( $cases ) . " case(s).", array( 'cases' => $cases, 'counts' => $counts, 'today' => $today,
+                                                           'can_returned' => hasAuthorization( 'appstv_returned_tv_list' ) ) );   // 1.0.34
     } );
 }
 
@@ -679,7 +680,8 @@ function appstv_case_get(){
             'inspect_no_open' => APPSTV_INSPECT_NO_OPEN,
             'can_inspect' => hasAuthorization( 'appstv_case_inspect' ),
             'me_name' => appstv_case_user_name( appstv_case_user_id() ),  // 1.0.33: written in the consent sentence
-            'consent_titles' => APPSTV_CONSENT_TITLES
+            'consent_titles' => APPSTV_CONSENT_TITLES,
+            'can_office' => hasAuthorization( APPSTV_CASE_OFFICE )     // 1.0.34
         );
         return array( "Case SC-$id.", $data );
     } );
@@ -847,6 +849,9 @@ function appstv_case_set_tv(){
             if( mysqli_num_rows( appstv_case_db( "SELECT 1 FROM service_case_inspections WHERE case_tv_id = " . (int) $row[ 'id' ] ) ) > 0 ){
                 throw new AppstvServiceRuleException( "TV " . $row[ 'serial_number' ] . " was inspected on this case; it cannot be removed." );   // 1.0.32
             }
+            if( mysqli_num_rows( appstv_case_db( "SELECT 1 FROM service_case_inspections WHERE new_case_tv_id = " . (int) $row[ 'id' ] ) ) > 0 ){
+                throw new AppstvServiceRuleException( "TV " . $row[ 'serial_number' ] . " was given as a replacement on this case; it cannot be removed." );   // 1.0.34
+            }
             appstv_case_db( "DELETE FROM service_case_tvs WHERE id = " . (int) $row[ 'id' ] );
             appstv_case_log( $id, 'tv', 'TV ' . $row[ 'serial_number' ] . ' removed from the case' );
             return array( "TV removed.", array( 'case_id' => $id ) );
@@ -896,95 +901,126 @@ function appstv_case_close(){
 function appstv_record_service(){
     checkAuthorizationForFunction( __FUNCTION__ );
     appstv_case_transaction( __FUNCTION__, function(){
-        global $con;
         $in = json_decode( (string) request( 'service' ), true );
         if( !is_array( $in ) ){ throw new AppstvServiceRuleException( "The form data was not received." ); }
-
-        $product_sn_id = trim( (string) ( isset( $in[ 'product_sn_id' ] ) ? $in[ 'product_sn_id' ] : '' ) );
-        $type    = isset( $in[ 'type' ] ) ? $in[ 'type' ] : '';
-        $date    = trim( (string) ( isset( $in[ 'date' ] ) ? $in[ 'date' ] : '' ) );
-        $ref_no  = trim( (string) ( isset( $in[ 'ref_no' ] ) ? $in[ 'ref_no' ] : '' ) );
-        $remarks = trim( (string) ( isset( $in[ 'remarks' ] ) ? $in[ 'remarks' ] : '' ) );
-        $case_id = (int) ( isset( $in[ 'case_id' ] ) ? $in[ 'case_id' ] : 0 );
-        if( !in_array( $type, array( 'repair', 'replacement' ) ) ){ throw new AppstvServiceRuleException( "Choose Repair or Replacement." ); }
-        if( !appstv_case_valid_date( $date ) ){ throw new AppstvServiceRuleException( "Enter the date of service." ); }
-        if( $date > appstv_case_today() ){ throw new AppstvServiceRuleException( "The date of service cannot be in the future." ); }
-        if( $ref_no !== '' && !preg_match( '/^[A-Za-z0-9][A-Za-z0-9 \/\-_.#]{0,49}$/', $ref_no ) ){ throw new AppstvServiceRuleException( "The Ref No. is not valid (letters, digits, space / - _ . #, up to 50)." ); }
-        if( $remarks === '' ){ throw new AppstvServiceRuleException( "Describe what was done (remarks)." ); }
-        if( strlen( $remarks ) > 2000 ){ throw new AppstvServiceRuleException( "Remarks are too long (max 2000)." ); }
-
-        $chain = appstv_case_tv_chain( $product_sn_id );
-        if( $chain === null ){ throw new AppstvServiceRuleException( "That TV does not exist." ); }
-        if( $chain[ 'psnw_id' ] === null ){ throw new AppstvServiceRuleException( "TV {$chain['serial_number']} has no warranty record, so no service can be recorded on it." ); }
-        if( !$chain[ 'is_current' ] ){ throw new AppstvServiceRuleException( "TV {$chain['serial_number']} was already replaced by {$chain['current_serial_number']}. Record the service on that TV." ); }
-
-        $case_tv = null;
-        if( $case_id > 0 ){
-            $case = appstv_case_read( $case_id, true );
-            if( $case[ 'status' ] === 'closed' ){ throw new AppstvServiceRuleException( "This case is closed. Reopen it first." ); }
-            $case_tv = mysqli_fetch_assoc( appstv_case_db( "SELECT * FROM service_case_tvs WHERE case_id = $case_id AND product_sn_id = '" . escape_string( $product_sn_id ) . "' LIMIT 1" ) );
-            if( $case_tv === null ){ throw new AppstvServiceRuleException( "That TV is not on this case." ); }
-        }
-
-        // Replacement TV: unsold stock record of that model, else a new record (warning when the serial is used elsewhere)
-        $new_product_sn_id = null;
-        $new_serial = '';
-        if( $type === 'replacement' ){
-            $new_serial = strtoupper( preg_replace( '/[^A-Za-z0-9]/', '', (string) ( isset( $in[ 'new_serial_number' ] ) ? $in[ 'new_serial_number' ] : '' ) ) );
-            $new_product_id = trim( (string) ( isset( $in[ 'new_product_id' ] ) ? $in[ 'new_product_id' ] : '' ) );
-            if( $new_serial === '' || strlen( $new_serial ) > 50 ){ throw new AppstvServiceRuleException( "Enter the serial number of the replacement TV." ); }
-            if( $new_product_id === '' ){ $new_product_id = $chain[ 'product_id' ]; }
-            $e_pid = escape_string( $new_product_id );
-            if( mysqli_num_rows( appstv_case_db( "SELECT 1 FROM products WHERE product_id = '$e_pid'" ) ) === 0 ){ throw new AppstvServiceRuleException( "The replacement TV model does not exist." ); }
-            if( $new_serial === strtoupper( $chain[ 'serial_number' ] ) && $new_product_id === $chain[ 'product_id' ] ){
-                throw new AppstvServiceRuleException( "The replacement serial number is the same as the faulty TV." );
-            }
-            $e_sn = escape_string( $new_serial );
-            $records = appstv_case_rows( "SELECT ps.product_sn_id, ps.product_id, ps.allotted_to_customer,
-                                                 EXISTS( SELECT 1 FROM invoice_product_sn i WHERE i.product_sn_id = ps.product_sn_id ) AS invoiced,
-                                                 EXISTS( SELECT 1 FROM order_product_sn o WHERE o.product_sn_id = ps.product_sn_id ) AS in_order,
-                                                 EXISTS( SELECT 1 FROM product_warranty_replacements r WHERE r.new_product_sn_id = ps.product_sn_id ) AS replacement
-                                          FROM product_sn ps WHERE ps.serial_number = '$e_sn' ORDER BY ps.id FOR UPDATE" );
-            $used_elsewhere = false;
-            foreach( $records as $record ){
-                $free = ( (int) $record[ 'allotted_to_customer' ] === 0 && !$record[ 'invoiced' ] && !$record[ 'in_order' ] && !$record[ 'replacement' ] );
-                if( $free && $record[ 'product_id' ] === $new_product_id && $new_product_sn_id === null ){
-                    $new_product_sn_id = $record[ 'product_sn_id' ];
-                }
-                if( !$free ){ $used_elsewhere = true; }
-            }
-            if( $new_product_sn_id !== null ){
-                appstv_case_db( "UPDATE product_sn SET allotted_to_customer = 1 WHERE product_sn_id = '" . escape_string( $new_product_sn_id ) . "' AND allotted_to_customer = 0" );
-                if( mysqli_affected_rows( $con ) !== 1 ){ throw new AppstvServiceRuleException( "The replacement TV was taken by someone else just now. Please try again." ); }
-            } else {
-                if( $used_elsewhere && empty( $in[ 'confirm_duplicate' ] ) ){
-                    throw new AppstvServiceRuleException( "DUPLICATE:Serial number $new_serial is already used by another TV. Save it as a separate TV (same serial number from the manufacturer)?" );
-                }
-                $new_product_sn_id = appstv_case_unique_id( 'product_sn', 'product_sn_id', 'product_sn' );
-                appstv_case_db( "INSERT INTO product_sn ( product_sn_id, product_id, serial_number, created_on, allotted_to_customer )
-                                 VALUES ( '$new_product_sn_id', '$e_pid', '$e_sn', '" . create_iso_8601_datetime() . "', 1 )" );
-            }
-        }
-
-        $invoice_id = appstv_case_service_invoice( $ref_no, $chain[ 'customer_id' ], $date );
-        $pwrp_id = appstv_case_unique_id( 'product_warranty_replacements', 'pwrp_id' );
-        appstv_case_db( "INSERT INTO product_warranty_replacements ( pwrp_id, is_repairable, psnw_id, date_of_service, new_invoice_id, new_product_sn_id, remarks )
-                         VALUES ( '$pwrp_id', " . ( $type === 'repair' ? 1 : 0 ) . ", '" . escape_string( $chain[ 'psnw_id' ] ) . "', '$date 00:00:00',
-                                  " . ( $invoice_id === null ? "NULL" : "'$invoice_id'" ) . ", " . ( $new_product_sn_id === null ? "NULL" : "'$new_product_sn_id'" ) . ",
-                                  '" . escape_string( $remarks ) . "' )" );
-
-        $summary = ( $type === 'repair' ) ? "Repair of TV {$chain['serial_number']} on $date" : "TV {$chain['serial_number']} replaced by $new_serial on $date";
-        $summary .= ( $ref_no !== '' ? " (Ref No. $ref_no)" : '' ) . ': ' . $remarks;
-        if( $case_tv !== null ){
-            appstv_case_db( "UPDATE service_case_tvs SET pwrp_id = '$pwrp_id' WHERE id = " . (int) $case_tv[ 'id' ] );
-            $on_case = mysqli_num_rows( appstv_case_db( "SELECT 1 FROM service_case_tvs WHERE case_id = $case_id AND product_sn_id = '$new_product_sn_id'" ) ) > 0;
-            if( $type === 'replacement' && !$on_case ){  // The replacement TV joins the case so later services can be recorded on it
-                appstv_case_insert_tv( $case_id, $new_product_sn_id, '' );
-            }
-            appstv_case_log( $case_id, 'service', $summary );
-        }
-        return array( ( $type === 'repair' ? "Repair" : "Replacement" ) . " recorded.", array( 'pwrp_id' => $pwrp_id, 'summary' => $summary ) );
+        $done = appstv_case_service_core( $in );
+        return array( ( $done[ 'type' ] === 'repair' ? "Repair" : "Replacement" ) . " recorded.", array( 'pwrp_id' => $done[ 'pwrp_id' ], 'summary' => $done[ 'summary' ] ) );
     } );
+}
+
+/**
+ * @description Writes a repair or a replacement into the warranty records (used by Record service and, 1.0.34, by
+ *              the office step of an inspection; runs inside the caller's transaction). A replacement takes an unsold
+ *              TV of that serial, or a returned TV marked repaired (the same record, given out again), else makes a
+ *              new TV record; the faulty TV is marked as returned to the office.
+ * @param {array} $in - product_sn_id, type (repair | replacement), date, ref_no, remarks, case_id, new_serial_number,
+ *                      new_product_id, confirm_duplicate
+ * @returns {array} { type, pwrp_id, summary, new_product_sn_id, new_serial }
+ */
+function appstv_case_service_core( $in ){
+    global $con;
+    $product_sn_id = trim( (string) ( isset( $in[ 'product_sn_id' ] ) ? $in[ 'product_sn_id' ] : '' ) );
+    $type    = isset( $in[ 'type' ] ) ? $in[ 'type' ] : '';
+    $date    = trim( (string) ( isset( $in[ 'date' ] ) ? $in[ 'date' ] : '' ) );
+    $ref_no  = trim( (string) ( isset( $in[ 'ref_no' ] ) ? $in[ 'ref_no' ] : '' ) );
+    $remarks = trim( (string) ( isset( $in[ 'remarks' ] ) ? $in[ 'remarks' ] : '' ) );
+    $case_id = (int) ( isset( $in[ 'case_id' ] ) ? $in[ 'case_id' ] : 0 );
+    if( !in_array( $type, array( 'repair', 'replacement' ) ) ){ throw new AppstvServiceRuleException( "Choose Repair or Replacement." ); }
+    if( !appstv_case_valid_date( $date ) ){ throw new AppstvServiceRuleException( "Enter the date of service." ); }
+    if( $date > appstv_case_today() ){ throw new AppstvServiceRuleException( "The date of service cannot be in the future." ); }
+    if( $ref_no !== '' && !preg_match( '/^[A-Za-z0-9][A-Za-z0-9 \/\-_.#]{0,49}$/', $ref_no ) ){ throw new AppstvServiceRuleException( "The Ref No. is not valid (letters, digits, space / - _ . #, up to 50)." ); }
+    if( $remarks === '' ){ throw new AppstvServiceRuleException( "Describe what was done (remarks)." ); }
+    if( strlen( $remarks ) > 2000 ){ throw new AppstvServiceRuleException( "Remarks are too long (max 2000)." ); }
+
+    $chain = appstv_case_tv_chain( $product_sn_id );
+    if( $chain === null ){ throw new AppstvServiceRuleException( "That TV does not exist." ); }
+    if( $chain[ 'psnw_id' ] === null ){ throw new AppstvServiceRuleException( "TV {$chain['serial_number']} has no warranty record, so no service can be recorded on it." ); }
+    if( !$chain[ 'is_current' ] ){ throw new AppstvServiceRuleException( "TV {$chain['serial_number']} was already replaced by {$chain['current_serial_number']}. Record the service on that TV." ); }
+
+    $case_tv = null;
+    if( $case_id > 0 ){
+        $case = appstv_case_read( $case_id, true );
+        if( $case[ 'status' ] === 'closed' ){ throw new AppstvServiceRuleException( "This case is closed. Reopen it first." ); }
+        $case_tv = mysqli_fetch_assoc( appstv_case_db( "SELECT * FROM service_case_tvs WHERE case_id = $case_id AND product_sn_id = '" . escape_string( $product_sn_id ) . "' LIMIT 1" ) );
+        if( $case_tv === null ){ throw new AppstvServiceRuleException( "That TV is not on this case." ); }
+    }
+
+    // Replacement TV: unsold stock record of that model, else a new record (warning when the serial is used elsewhere)
+    $new_product_sn_id = null;
+    $new_serial = '';
+    if( $type === 'replacement' ){
+        $new_serial = strtoupper( preg_replace( '/[^A-Za-z0-9]/', '', (string) ( isset( $in[ 'new_serial_number' ] ) ? $in[ 'new_serial_number' ] : '' ) ) );
+        $new_product_id = trim( (string) ( isset( $in[ 'new_product_id' ] ) ? $in[ 'new_product_id' ] : '' ) );
+        if( $new_serial === '' || strlen( $new_serial ) > 50 ){ throw new AppstvServiceRuleException( "Enter the serial number of the replacement TV." ); }
+        if( $new_product_id === '' ){ $new_product_id = $chain[ 'product_id' ]; }
+        $e_pid = escape_string( $new_product_id );
+        if( mysqli_num_rows( appstv_case_db( "SELECT 1 FROM products WHERE product_id = '$e_pid'" ) ) === 0 ){ throw new AppstvServiceRuleException( "The replacement TV model does not exist." ); }
+        if( $new_serial === strtoupper( $chain[ 'serial_number' ] ) && $new_product_id === $chain[ 'product_id' ] ){
+            throw new AppstvServiceRuleException( "The replacement serial number is the same as the faulty TV." );
+        }
+        $e_sn = escape_string( $new_serial );
+        $records = appstv_case_rows( "SELECT ps.product_sn_id, ps.product_id, ps.allotted_to_customer,
+                                                 ( SELECT st.state FROM product_sn_stock st WHERE st.product_sn_id = ps.product_sn_id ) AS stock_state,
+                                             EXISTS( SELECT 1 FROM invoice_product_sn i WHERE i.product_sn_id = ps.product_sn_id ) AS invoiced,
+                                             EXISTS( SELECT 1 FROM order_product_sn o WHERE o.product_sn_id = ps.product_sn_id ) AS in_order,
+                                             EXISTS( SELECT 1 FROM product_warranty_replacements r WHERE r.new_product_sn_id = ps.product_sn_id ) AS replacement
+                                      FROM product_sn ps WHERE ps.serial_number = '$e_sn' ORDER BY ps.id FOR UPDATE" );
+        $used_elsewhere = false;
+        $reused = null;                                       // 1.0.34: a returned TV, repaired, given out again
+        foreach( $records as $record ){
+            if( $record[ 'product_sn_id' ] === $product_sn_id ){ continue; }
+            if( $record[ 'stock_state' ] === 'returned' ){
+                throw new AppstvServiceRuleException( "TV $new_serial came back faulty and is not marked as repaired yet (Returned TVs)." );
+            }
+            if( $record[ 'stock_state' ] === 'repaired_stock' ){
+                if( $reused === null ){ $reused = $record; }
+                continue;
+            }
+            $free = ( (int) $record[ 'allotted_to_customer' ] === 0 && !$record[ 'invoiced' ] && !$record[ 'in_order' ] && !$record[ 'replacement' ] );
+            if( $free && $record[ 'product_id' ] === $new_product_id && $new_product_sn_id === null ){
+                $new_product_sn_id = $record[ 'product_sn_id' ];
+            }
+            if( !$free ){ $used_elsewhere = true; }
+        }
+        if( $reused !== null ){
+            $new_product_sn_id = $reused[ 'product_sn_id' ];
+            appstv_case_db( "UPDATE product_sn SET allotted_to_customer = 1 WHERE product_sn_id = '" . escape_string( $new_product_sn_id ) . "'" );
+            appstv_case_stock_set( $new_product_sn_id, 'given', $case_id > 0 ? $case_id : null, "Given as a replacement for TV {$chain['serial_number']}" );
+        } else if( $new_product_sn_id !== null ){
+            appstv_case_db( "UPDATE product_sn SET allotted_to_customer = 1 WHERE product_sn_id = '" . escape_string( $new_product_sn_id ) . "' AND allotted_to_customer = 0" );
+            if( mysqli_affected_rows( $con ) !== 1 ){ throw new AppstvServiceRuleException( "The replacement TV was taken by someone else just now. Please try again." ); }
+        } else {
+            if( $used_elsewhere && empty( $in[ 'confirm_duplicate' ] ) ){
+                throw new AppstvServiceRuleException( "DUPLICATE:Serial number $new_serial is already used by another TV. Save it as a separate TV (same serial number from the manufacturer)?" );
+            }
+            $new_product_sn_id = appstv_case_unique_id( 'product_sn', 'product_sn_id', 'product_sn' );
+            appstv_case_db( "INSERT INTO product_sn ( product_sn_id, product_id, serial_number, created_on, allotted_to_customer )
+                             VALUES ( '$new_product_sn_id', '$e_pid', '$e_sn', '" . create_iso_8601_datetime() . "', 1 )" );
+        }
+    }
+
+    $invoice_id = appstv_case_service_invoice( $ref_no, $chain[ 'customer_id' ], $date );
+    $pwrp_id = appstv_case_unique_id( 'product_warranty_replacements', 'pwrp_id' );
+    appstv_case_db( "INSERT INTO product_warranty_replacements ( pwrp_id, is_repairable, psnw_id, date_of_service, new_invoice_id, new_product_sn_id, remarks )
+                     VALUES ( '$pwrp_id', " . ( $type === 'repair' ? 1 : 0 ) . ", '" . escape_string( $chain[ 'psnw_id' ] ) . "', '$date 00:00:00',
+                              " . ( $invoice_id === null ? "NULL" : "'$invoice_id'" ) . ", " . ( $new_product_sn_id === null ? "NULL" : "'$new_product_sn_id'" ) . ",
+                              '" . escape_string( $remarks ) . "' )" );
+
+    if( $type === 'replacement' ){                        // 1.0.34: the faulty TV comes back to the office
+        appstv_case_stock_set( $product_sn_id, 'returned', $case_id > 0 ? $case_id : null, "Replaced by $new_serial" );
+    }
+
+    $summary = ( $type === 'repair' ) ? "Repair of TV {$chain['serial_number']} on $date" : "TV {$chain['serial_number']} replaced by $new_serial on $date";
+    $summary .= ( $ref_no !== '' ? " (Ref No. $ref_no)" : '' ) . ': ' . $remarks;
+    if( $case_tv !== null ){
+        appstv_case_db( "UPDATE service_case_tvs SET pwrp_id = '$pwrp_id' WHERE id = " . (int) $case_tv[ 'id' ] );
+        $on_case = mysqli_num_rows( appstv_case_db( "SELECT 1 FROM service_case_tvs WHERE case_id = $case_id AND product_sn_id = '$new_product_sn_id'" ) ) > 0;
+        if( $type === 'replacement' && !$on_case ){  // The replacement TV joins the case so later services can be recorded on it
+            appstv_case_insert_tv( $case_id, $new_product_sn_id, '' );
+        }
+        appstv_case_log( $case_id, 'service', $summary );
+    }
+    return array( 'type' => $type, 'pwrp_id' => $pwrp_id, 'summary' => $summary, 'new_product_sn_id' => $new_product_sn_id, 'new_serial' => $new_serial );
 }
 
 
