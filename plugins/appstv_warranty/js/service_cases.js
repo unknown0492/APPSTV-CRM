@@ -477,7 +477,7 @@ var SC = {
                 tvsHtml += '<div class="input-group mt-3 sc-add-tv"><input type="text" id="scd_add_serial" class="form-control form-control-solid font-monospace" placeholder="Add a TV: serial number" autocomplete="off" autocapitalize="characters" aria-label="Serial number"/>'
                          + '<button type="button" class="btn btn-light-primary" data-sc-action="add-tv">Add</button>'
                          + '<button type="button" class="btn btn-primary" data-sc-action="scan-tv" title="Scan with the camera" aria-label="Scan with the camera"><i class="fa-solid fa-camera"></i></button>'
-                         + '<button type="button" class="btn btn-primary" data-sc-action="photo-tv" title="Photo of the barcode" aria-label="Photo of the barcode"><i class="fa-regular fa-image"></i></button></div>'
+                         + '<button type="button" class="btn sc-btn-photo" data-sc-action="photo-tv" title="Photo of the barcode" aria-label="Photo of the barcode"><i class="fa-regular fa-image"></i></button></div>'
                          + '<input type="file" id="scd_tv_photos" class="d-none" accept="image/*"' + ( c.kind === 'tv' ? '' : ' multiple' ) + '/>'
                          + '<div class="form-text" id="scd_tv_photo_status" aria-live="polite">Photo of the barcode: crop it to the barcode, the serial number is read from it.</div>';
             }

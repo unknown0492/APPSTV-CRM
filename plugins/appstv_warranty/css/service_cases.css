@@ -575,3 +575,8 @@
 .scs-person > span { display: flex; flex-direction: column; min-width: 0; color: #181c32; }
 .scs-person.is-on { border-color: #0b5cad; background: #f0f7ff; }
 .scs-note { color: #854d0e; font-size: 0.85rem; margin-top: 2px; }
+
+/* v1.0.31 - TVs tab: "Photo of the barcode" button in dark teal, so it stands apart from the blue camera button */
+.btn.sc-btn-photo { background: #0f766e; color: #fff; border: 1px solid #0f766e; }
+.btn.sc-btn-photo:hover, .btn.sc-btn-photo:focus, .btn.sc-btn-photo:active { background: #115e59; color: #fff; border-color: #115e59; }
+.btn.sc-btn-photo i { color: inherit; }
