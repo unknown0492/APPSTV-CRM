@@ -332,21 +332,43 @@ var SC = {
     /**
      * @description Loads a case and shows it
      * @param {number} caseId - The case
+     * @param {string} [tab] - Tab to show (1.0.35: 'tvs' when a TV case is opened from the TVs tab); default:
+     *                         Overview for another case, the same tab for the same case
      * @returns {void}
      */
-    openCase : function ( caseId ) {
+    openCase : function ( caseId, tab ) {
         if ( SC.gallery.busy() && SC.current && SC.current.case.id !== caseId ) {
             SC.showTab( 'media' );
             showSimpleToast( 'warning', 'Upload (or remove) the waiting photos / videos first.' );
             return;
         }
         SC.post( { what_do_you_want: 'appstv_case_get', case_id: caseId } ).then( function ( info ) {
-            if ( !SC.current || SC.current.case.id !== caseId ) { SC.tab = 'overview'; }
+            if ( tab ) { SC.tab = tab; }
+            else if ( !SC.current || SC.current.case.id !== caseId ) { SC.tab = 'overview'; }
             SC.current = info.data;
             SC.renderCase();
             SC.setUrl( caseId );
             bootstrap.Modal.getOrCreateInstance( document.getElementById( 'sc_case_modal' ) ).show();
+            if ( tab === 'tvs' ) { SC.focusTvEntry(); }
         } ).catch( SC.toastError );
+    },
+
+    /**
+     * @description Puts the cursor in the serial number box of the TVs tab (or, when the case has none, on the
+     *              highlighted TV case), so the TV's serial can be typed or scanned at once (1.0.35)
+     * @returns {void}
+     */
+    focusTvEntry : function () {
+        var go = function () {
+            var $target = $( '#scd_add_serial' );
+            if ( !$target.length ) { $target = $( '#sc_pane_tvs .sc-tv-case.is-current' ); }
+            if ( !$target.length ) { return; }
+            $target[ 0 ].scrollIntoView( { block: 'center' } );
+            $target.trigger( 'focus' );
+        };
+        var el = document.getElementById( 'sc_case_modal' );
+        if ( $( el ).hasClass( 'show' ) ) { setTimeout( go, 50 ); }      // Already open: after this redraw
+        else { $( el ).one( 'shown.bs.modal', go ); }                    // Opening: once it is shown (Bootstrap moves the focus first)
     },
 
     /**
@@ -936,7 +958,10 @@ var SC = {
         var update = function ( changes ) { return SC.caseCall( { what_do_you_want: 'appstv_case_update', changes: JSON.stringify( changes ) } ); };
         var tv = SC.current.tvs[ +$el.attr( 'data-tv-index' ) ];
 
-        if ( action === 'open-case' ) { SC.openCase( +$el.attr( 'data-open-id' ) ); return; }
+        if ( action === 'open-case' ) {                         // 1.0.35: from the TVs tab, the TV case opens on its TVs tab
+            SC.openCase( +$el.attr( 'data-open-id' ), $el.closest( '#sc_pane_tvs' ).length ? 'tvs' : undefined );
+            return;
+        }
         if ( action === 'history' ) { SC.showHistory(); return; }
         if ( action === 'cancel-edit' ) { SC.renderCase(); return; }
         if ( action === 'edit-visit' ) { $( '#scd_visit_view' ).addClass( 'd-none' ); $( '#scd_visit_edit' ).removeClass( 'd-none' ); $el.addClass( 'd-none' ); }
