@@ -940,8 +940,9 @@ function processShopifyOrderCreateWebhookResponse( $data ){
     $order->setUpdatedAt( $updated_at );
     $order->createOrder();
     
-    // Update the status in order_status_history
-    OrderStatusHistory::addToOrderStatusHistory( $order_id, "SHOPIFY_WEBHOOK", Order::ORDER_STATUS_CANCELLED );
+    // Update the status in order_status_history: the status the order was created with (1.0.40; it wrote
+    // "cancelled" for every new Shopify order before)
+    OrderStatusHistory::addToOrderStatusHistory( $order_id, "SHOPIFY_WEBHOOK", $order_status );
     
     // Capture the Order Meta data into variables
     // Store other values as order_meta
