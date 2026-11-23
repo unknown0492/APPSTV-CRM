@@ -1070,191 +1070,11 @@ function processShopifyOrderCreateWebhookResponse( $data ){
     $orderAddressShipping->setCountryCode( $sa_country_code );
     $orderAddressShipping->createOrderAddress();
     
-    // Create the Invoice in the QuickBooks
-    $customer                   = new Customer();
-    $customer->readCustomer( $order->getCustomerID() );
-    $quickbooks_customer_id = CustomerMeta::getCustomerMetaValue( $customer->getCustomerID() , CustomerMeta::DB_CUSTOMER_META_KEY_QUICKBOOKS_CUSTOMER_ID );
+    // Create the Invoice in the QuickBooks (1.0.39: built from the stored order; a missing QuickBooks item is looked up
+    // by SKU, and a failure is stored on the order and emailed instead of being lost in this webhook's answer)
+    $invoice = createQuickBooksInvoiceForOrder( $order->getOrderID(), "Shopify order" );
     
-    $dataService                = getQuickBooksDataService();
-    $quickbooks_line_items      = array();
-    $order_products_array       = $products;//json_decode( $order->getProducts(), true );
-    $totalAmount                = 0;
-    foreach ( $order_products_array as $shopifyProduct ) {
-        
-        $shopify_product_id     = $shopifyProduct[ 'product_id' ];
-        
-        /*
-        // Retrieve CRM Product ID from ProductMeta table using Shopify Product ID
-        $crm_product_id             = ProductMeta::getProductIdFromProductMetaKeyValue( ProductMeta::DB_PRODUCT_META_KEY_SHOPIFY_PRODUCT_ID, $shopifyProduct[ 'product_id' ] );
-        */
-        
-        $sku                    = $shopifyProduct[ SHOPIFY_PRODUCT_SKU ];
-        
-        $crmProduct = new Product();
-        $crmProduct->readProductUsingSKU( $sku );
-        
-        // Use the product_name from the shopify, because we have variants now that gives us a different product name 
-        $product_name           = $shopifyProduct[ 'name' ]; //$crmProduct->getName();
-        
-        $qty                    = intval( $shopifyProduct[ 'quantity' ] );
-        $unit_price             = round( floatval( $shopifyProduct[ SHOPIFY_PRODUCT_PRICE ] ), 2 );
-        $amount                 = round( $qty * $unit_price, 2 );                           // 2 decimal places after . 
-        
-        
-        // Unit Price exclusive of GST 9%
-        $unit_price_exc_gst = round(($unit_price/1.09), 4);
-        $amount_exc_gst     = round( $qty * $unit_price_exc_gst, 4 ); 
-        
-        
-        // Retrieve QuickBooks Product ID from ProductMeta table using CRM product_id
-        $quickbooks_product_id  = ProductMeta::getQuickBooksProductID( $crmProduct->getProductID() );
-                
-        $tempLineItem = array(
-            "DetailType" => "SalesItemLineDetail",
-            "SalesItemLineDetail" => array(
-                "ItemRef" => array(
-                    "value" => $quickbooks_product_id,
-                    "name" => $product_name
-                ),
-                "Qty" => $qty,
-                "UnitPrice" => $unit_price_exc_gst,
-                "TaxCodeRef" => array(
-                    "value" => "44"         // -> GST SR 9% in QuickBooks TaxCode
-                )
-            ),
-            "Amount" => $amount_exc_gst,
-            "Description" => $shopifyProduct[ 'variant_title' ]
-        );
-        array_push( $quickbooks_line_items, $tempLineItem );
-        
-        //$totalAmount += $amount;
-    }
-    //$totalAmount = round( $totalAmount, 2 );
-    
-    // Discount Line Items
-    $discount_codes_json    = OrderMeta::getOrderMetaValue( $order->getOrderID(), OrderMeta::DB_ORDER_META_KEY_SHOPIFY_ORDER_DISCOUNT_CODES );
-    $discount_codes_array   = json_decode( $discount_codes_json, true );
-    //$discount_line_item     = array();
-    foreach ( $discount_codes_array as $discount ) {
-        $tempDiscountLineItem = array(
-            "DetailType" => "DiscountLineDetail",
-            "DiscountLineDetail" => array(
-                "PercentBased" => false,
-                "DiscountAccountRef" => array(
-                    "value" => "40"
-                )
-            ),
-            "Amount" => $discount[ 'amount' ],
-            "Description" => 'Coupon code: ' . $discount[ 'code' ]
-        );
-        array_push( $quickbooks_line_items, $tempDiscountLineItem );
-    }
-    
-    // Shipping Line Items
-    $total_shipping_price   = $order->getTotalShippingPrice();
-    $shipping_price_exc_tax = round(($total_shipping_price/1.09), 4);
-    $shippingLineItem       = array(
-        "DetailType" => "SalesItemLineDetail",
-        "SalesItemLineDetail" => array(
-            "TaxInclusiveAmt" => $total_shipping_price,
-            "ItemRef" => array(
-                "value" => "SHIPPING_ITEM_ID"
-            ),
-            "TaxCodeRef" => array(
-                "value" => "44"
-            )
-        ),
-        "Amount" => $shipping_price_exc_tax
-    );
-    array_push( $quickbooks_line_items, $shippingLineItem );
-    
-    $invoiceParams = array(
-        "Line" => $quickbooks_line_items,
-        //"TotalAmt" => $totalAmount,           // Dont need to specify, QuickBooks auto calculates it        
-        "CustomerRef" => array(
-            "name" => $customer->getFirstName() . " " . $customer->getLastName(),
-            "value" => $quickbooks_customer_id
-        ),
-        "BillEmail" => array(
-            "Address" => $order->getEmail()
-        ),
-        "BillEmailBcc" => array(
-            "Address" => "unknown0492@gmail.com"
-        ),
-        "BillAddr" => array(
-            "Line1" => $orderAddressBilling->getFirstName() . " " . $orderAddressBilling->getLastName(),
-            "Line2" => $orderAddressBilling->getAddress1(),
-            "Line3" => $orderAddressBilling->getAddress2(),
-            "Line4" => $orderAddressBilling->getCity() . ", " . $orderAddressBilling->getState() . ", " . $orderAddressBilling->getCountry(),
-            "Line5" => $orderAddressBilling->getZip(),
-            "Lat" => $orderAddressBilling->getLatitude(),
-            "Long" => $orderAddressBilling->getLongitude(),
-        ),
-        "ShipAddr" => array(
-            "Line1" => $orderAddressShipping->getAddress1(),
-            "Line2" => $orderAddressShipping->getAddress2(),
-            "City" => $orderAddressShipping->getCity(),
-            "PostalCode" => $orderAddressShipping->getZip(),
-            "Lat" => $orderAddressShipping->getLatitude(),
-            "Long" => $orderAddressShipping->getLongitude(),
-        ),
-        "ApplyTaxAfterDiscount" => false,
-        "GlobalTaxCalculation" => "TaxInclusive",
-        /*
-        "TxnTaxDetail" => array(            
-            //"TxnTaxCodeRef" => array(
-            //    "value"=> "2"
-            //),            
-            //"TotalTax"=> 0,
-            "TaxLine"=> array(
-                array(
-                    //"Amount"=> 0,
-                    "DetailType"=> "TaxLineDetail",
-                    "TaxLineDetail"=> array(
-                        "TaxRateRef"=> array(
-                            "value"=> "49"
-                        ),
-                        "PercentBased" => true,
-                        //"TaxPercent"=> 0,
-                        //"NetAmountTaxable"=> $totalAmount
-                    ),
-                )
-            )
-        )*/
-    );
-    print_r( $invoiceParams );
-    echo json_encode( $invoiceParams );
-    $invoiceObj = \QuickBooksOnline\API\Facades\Invoice::create($invoiceParams
-        /*    
-        "Discount" => [],
-        // CustomeFields to be used to update the invoice with the serial numbers of the products
-        "CustomField" => array(
-            array(
-                "Type" => "StringType",
-                "Name" => "Serial Number",
-                "StringValue" => "xxxxxxxxx"
-            )
-        )
-        */
-    );
-    $resultingObj = $dataService->Add( $invoiceObj );
-    $error = $dataService->getLastError();
-     if ($error) {
-         //echo "The Status code is: " . $error->getHttpStatusCode() . "\n";
-         //echo "The Helper message is: " . $error->getOAuthHelperError() . "\n";
-         //echo "The Response message is: " . $error->getResponseBody() . "\n";
-         echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "Failed to create invoice on QuickBooks: " . $error->getResponseBody() );
-     }
-     else {
-         // Store the Invoice ID in the DB Table
-         OrderMeta::setOrderMetaValue( $order->getOrderID(), OrderMeta::DB_ORDER_META_KEY_QUICKBOOKS_INVOICE_ID, $resultingObj->Id );
-         OrderMeta::setOrderMetaValue( $order->getOrderID(), OrderMeta::DB_ORDER_META_KEY_QUICKBOOKS_INVOICE_NUMBER, $resultingObj->DocNumber );
-         echo "Created Id={$resultingObj->Id}. Reconstructed response body:\n\n";
-         //$xmlBody = QuickBooksOnline\API\Core\Http\Serialization\XmlObjectSerializer::getPostXmlFromArbitraryEntity($resultingObj, $urlResource);
-         //echo $xmlBody . "\n";
-        }
-    
-    echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, "Order has been created" );
+    echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, "Order has been created. " . $invoice[ 'message' ] );
     
 }
 
@@ -1291,23 +1111,31 @@ function processShopifyCustomerUpdateWebhookResponse( $data ){
     
     $shopify_customer_email_marketing_consent   = data_exists( 'email_marketing_consent', $shopify_data )?$shopify_data[ 'email_marketing_consent' ]:'';
     
+    // Escaped copies for SQL only (1.0.39): a name like O'Brien broke this query and stopped the order webhook
+    // before the order was saved. QuickBooks below gets the real names.
+    $e_shopify_customer_first_name  = escape_string( $shopify_customer_first_name );
+    $e_shopify_customer_last_name   = escape_string( $shopify_customer_last_name );
+    $e_shopify_customer_state       = escape_string( $shopify_customer_state );
+    $e_shopify_customer_currency    = escape_string( $shopify_customer_currency );
+    $e_shopify_customer_updated_at  = escape_string( $shopify_customer_updated_at );
+
     // Retrieve User ID for the shopify customer id
     $customer = new Customer();
     $customer->readCustomer( $existing_crm_customer_id );
-    $user_id = $customer->getUserID(); 
-    
+    $user_id = $customer->getUserID();
+
     // Update the first name and last name in the Users Table
-    $sql = "UPDATE users SET fname='$shopify_customer_first_name', lname='$shopify_customer_last_name' WHERE user_id='$user_id'";
+    $sql = "UPDATE users SET fname='$e_shopify_customer_first_name', lname='$e_shopify_customer_last_name' WHERE user_id='$user_id'";
     updateQuery( $sql );
-    
+
     // Update the Customer Table records
     $customerUpdate = new Customer();
     $customerUpdate->setCustomerID( $existing_crm_customer_id );
-    $customerUpdate->setFirstName( $shopify_customer_first_name );
-    $customerUpdate->setLastName( $shopify_customer_last_name );
-    $customerUpdate->setState( $shopify_customer_state );
-    $customerUpdate->setCurrency( $shopify_customer_currency );
-    $customerUpdate->setUpdatedAt( $shopify_customer_updated_at );
+    $customerUpdate->setFirstName( $e_shopify_customer_first_name );
+    $customerUpdate->setLastName( $e_shopify_customer_last_name );
+    $customerUpdate->setState( $e_shopify_customer_state );
+    $customerUpdate->setCurrency( $e_shopify_customer_currency );
+    $customerUpdate->setUpdatedAt( $e_shopify_customer_updated_at );
     $customerUpdate->updateCustomer();
     
     // Update Customer Meta
@@ -1419,10 +1247,20 @@ function processShopifyCustomerCreateWebhookResponse( $data ){
         $shopify_customer_last_name = 'Customer';
     }
     
+    // Escaped copies for SQL only (1.0.39): a name like O'Brien broke these queries. QuickBooks and the welcome
+    // email get the real values.
+    $e_shopify_customer_email       = escape_string( $shopify_customer_email );
+    $e_shopify_customer_first_name  = escape_string( $shopify_customer_first_name );
+    $e_shopify_customer_last_name   = escape_string( $shopify_customer_last_name );
+    $e_shopify_customer_state       = escape_string( $shopify_customer_state );
+    $e_shopify_customer_currency    = escape_string( $shopify_customer_currency );
+    $e_shopify_customer_created_at  = escape_string( $shopify_customer_created_at );
+    $e_shopify_customer_updated_at  = escape_string( $shopify_customer_updated_at );
+
     // Create User in the users table
     // Check if the customer email is already associated with a user in the users table
     $user_id = '';
-    $sql = "SELECT user_id, email FROM users WHERE email='{$shopify_customer_email}'";
+    $sql = "SELECT user_id, email FROM users WHERE email='{$e_shopify_customer_email}'";
     $result_set = selectQuery( $sql );
     if( mysqli_num_rows( $result_set ) > 0 ){
         $val = mysqli_fetch_object( $result_set );
@@ -1451,7 +1289,7 @@ function processShopifyCustomerCreateWebhookResponse( $data ){
         $role_id        = 8;            // Role ID for Shopify Store Customer
 
         $sql = "INSERT into users( `user_id`, `password`, `email`, `fname`, `lname`, `nickname`, `public_key`, `private_key`, `role_id`, `registered_on` ) "
-                . "VALUES( '$user_id', '$password_hash', '{$shopify_customer_email}', '{$shopify_customer_first_name}', '{$shopify_customer_last_name}', '', '$public_key', '$private_key', $role_id, '$currentMillis' )";
+                . "VALUES( '$user_id', '$password_hash', '{$e_shopify_customer_email}', '{$e_shopify_customer_first_name}', '{$e_shopify_customer_last_name}', '', '$public_key', '$private_key', $role_id, '$currentMillis' )";
         $rows = insertQuery( $sql );
         if ( $rows == 0 ) {
             // Store this data in error logs in DB
@@ -1470,13 +1308,13 @@ function processShopifyCustomerCreateWebhookResponse( $data ){
         $customer->setCustomerID( Customer::generateCustomerID() );
         $customer->setCustomerSource( 's7YtgHu79D_so' );             // This Source ID is for the Shopify Store
         $customer->setUserID( $user_id );                                 
-        $customer->setFirstName( $shopify_customer_first_name );
-        $customer->setLastName( $shopify_customer_last_name );
-        $customer->setState( $shopify_customer_state );
-        $customer->setCurrency( $shopify_customer_currency );
-        $customer->setPrimaryEmail( $shopify_customer_email );
-        $customer->setCreatedAt( $shopify_customer_created_at );
-        $customer->setUpdatedAt( $shopify_customer_updated_at );
+        $customer->setFirstName( $e_shopify_customer_first_name );
+        $customer->setLastName( $e_shopify_customer_last_name );
+        $customer->setState( $e_shopify_customer_state );
+        $customer->setCurrency( $e_shopify_customer_currency );
+        $customer->setPrimaryEmail( $e_shopify_customer_email );
+        $customer->setCreatedAt( $e_shopify_customer_created_at );
+        $customer->setUpdatedAt( $e_shopify_customer_updated_at );
         $customer->createCustomer();
         
         // Customer meta

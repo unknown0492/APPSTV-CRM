@@ -61,6 +61,7 @@ checkAuthorizationForPage( 'manage_orders' );
                                 <th class="min-w-30px">Order Status</th>
                                 <th class="min-w-30px">Items</th>
                                 <th class="min-w-30px">Order Total</th>
+                                <th class="min-w-100px">QuickBooks</th>
                                 <th class="min-w-30px"></th>
                             </tr>
                         </thead>

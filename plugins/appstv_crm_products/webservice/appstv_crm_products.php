@@ -29,7 +29,9 @@ function get_crm_products(){
             . "sku, "
             . "name, "
             . "physical_product, "
-            . "price "
+            . "price, "
+            // 1.0.39: the QuickBooks item each product is invoiced as (empty = not linked)
+            . "( SELECT pm.product_meta_value FROM product_meta pm WHERE pm.product_id = products.product_id AND pm.product_meta_key = 'quickbooks_product_id' LIMIT 1 ) AS quickbooks_product_id "
         . "FROM products "
             . "ORDER BY id DESC";
     $result_set = selectQuery( $sql );
@@ -49,8 +51,83 @@ function get_crm_products(){
     
     $responseData[ 'message' ] = 'Products have been retrieved';
     $responseData[ 'data' ] = $products;
+    $responseData[ 'can_link_quickbooks' ] = hasAuthorization( 'set_crm_product_quickbooks_item' ) ? 1 : 0;      // 1.0.39
     
     echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, $responseData );
+}
+
+/**
+ * QuickBooks item of a CRM product (1.0.39). Shopify invoices use it for the product's lines.
+ *   action=find : read-only search of the active QuickBooks items with the product's SKU
+ *   action=save : links the product to item_id (must be an active QuickBooks item)
+ *
+ * Request: product_id, action, item_id (save)
+ */
+function set_crm_product_quickbooks_item(){
+    checkAuthorizationForFunction( __FUNCTION__ );
+    send_json_mime_type_header();
+
+    $product_id = trim( (string) request( 'product_id' ) );
+    $action     = trim( (string) request( 'action' ) );
+    validateEmptyString( $product_id, __FUNCTION__, "Product ID is required" );
+    if( !preg_match( '/^[0-9A-Za-z_-]{1,40}$/', $product_id ) || !in_array( $action, array( 'find', 'save' ), true ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "Invalid request" );
+        return;
+    }
+
+    $result_set = selectQuery( "SELECT sku, name FROM products WHERE product_id = '$product_id'" );
+    if( mysqli_num_rows( $result_set ) === 0 ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "No such product" );
+        return;
+    }
+    $product = mysqli_fetch_assoc( $result_set );
+
+    quickbooksLoadSdk();
+    $dataService = getQuickBooksDataService();
+    if( $dataService === NULL ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "The CRM is not connected to QuickBooks" );
+        return;
+    }
+    $error = '';
+    $items = getAllQuickBooksItems( $dataService, $error );
+    if( $items === NULL ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, $error );
+        return;
+    }
+
+    if( $action === 'find' ){
+        $matches = quickbooksItemsBySku( $dataService, $product[ 'sku' ], $error );
+        echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, array(
+            'message' => count( $matches ) . " QuickBooks item(s) with SKU " . $product[ 'sku' ],
+            'sku'     => $product[ 'sku' ],
+            'items'   => $matches
+        ) );
+        return;
+    }
+
+    $item_id = trim( (string) request( 'item_id' ) );
+    if( !preg_match( '/^[0-9]{1,15}$/', $item_id ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "QuickBooks item ID: digits only" );
+        return;
+    }
+    $found = NULL;
+    foreach( $items as $item ){
+        if( ( (string) $item->Id === $item_id ) && ( (string) $item->Active === 'true' ) ){
+            $found = $item;
+            break;
+        }
+    }
+    if( $found === NULL ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "No active QuickBooks item has ID " . $item_id );
+        return;
+    }
+
+    ProductMeta::setProductMetaValue( $product_id, ProductMeta::DB_PRODUCT_META_KEY_QUICKBOOKS_PRODUCT_ID, $item_id );
+    echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, array(
+        'message' => "Linked to QuickBooks item " . $item_id . " (" . $found->Name . ")",
+        'item_id' => $item_id,
+        'name'    => (string) $found->Name
+    ) );
 }
 
 function create_crm_product(){

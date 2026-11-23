@@ -629,8 +629,11 @@ function initCreateProductModal(){
 
 
 // Creates an HTML Element for the Select Tag's options for each value that is supplied to it
+var canLinkQuickBooks = false;       // 1.0.39: set from get_crm_products
+
 function createTableRow( value ){
-    var html = '<tr class="product-item" data-id="'+ value.id +'" data-product-id="'+ value.product_id +'">\n';
+    var html = '<tr class="product-item" data-id="'+ value.id +'" data-product-id="'+ value.product_id +'"' +
+               ' data-sku="'+ qbEscape( value.sku ) +'" data-quickbooks-item="'+ qbEscape( value.quickbooks_product_id || '' ) +'">\n';
     html += '<td><div class="form-check form-check-custom form-check-sm">' +
                     '<input class="form-check-input table-children-checkbox" type="checkbox" value="" id="flexRadioLg" />' +
                  '</div>' +
@@ -642,10 +645,15 @@ function createTableRow( value ){
     var physical_product = (value.physical_product=="1")?'<span class="badge rounded badge-success">YES</span>':'<span class="badge rounded badge-info">NO</span>';
     html += '<td>'+ physical_product +'</td>\n';       
     html += '<td>'+ value.price +'</td>\n';
+    // 1.0.39: QuickBooks item used for this product on Shopify invoices
+    html += '<td>' + ( value.quickbooks_product_id ? qbEscape( value.quickbooks_product_id ) : '<span class="badge rounded badge-warning">Not linked</span>' ) + '</td>\n';
+    var action_quickbooks = canLinkQuickBooks ?
+            '<a href="#" class="ms-4" title="QuickBooks Item" onclick="openQuickBooksItem(this,event);"><i class="fa-solid fs-2x text-success fa-link"></i></a>' : '';
     html += '<td>' +
                 '<a href="#" class="me-4" title="Edit Product" onclick="editProduct(this,event);"><i class="fa-regular fs-2x text-primary fa-pen-to-square"></i></a> ' + 
                 '<a href="#" class="me-4" title="Manage Inventory" onclick="manageInventory(this,event);"><i class="fa-solid fs-2x text-warning fa-boxes-stacked"></i></a>' + 
-                '<a href="#" class="" title="Sync Products" onclick="syncProducts(this,event);"><i class="fa-solid fs-2x text-info fa-rotate"></i></a>' + 
+                '<a href="#" class="" title="Sync Products" onclick="syncProducts(this,event);"><i class="fa-solid fs-2x text-info fa-rotate"></i></a>' +
+                action_quickbooks +
             '</td>';
     html += '</tr>\n';
 
@@ -702,7 +710,9 @@ function loadAllProductsIntoTable(){
             var data    = info[ 'data' ];
             console.log( info );
             console.log( data );
-            
+
+            canLinkQuickBooks = ( info[ 'can_link_quickbooks' ] == 1 );
+
             var html = '';
             
             $.each( data, function( i, v ){
@@ -853,11 +863,11 @@ function initDataTable(){
         columnDefs: [
             {// set default column settings
                 orderable: false,
-                targets: [0, 6]
+                targets: [0, 7]
             },
             {
                 searchable: false,
-                targets: [0, 6]
+                targets: [0, 7]
             },
             {
                 className: "text-left",
@@ -931,4 +941,138 @@ function showDataTableLoading(){
 function hideDataTableLoading(){
     KTApp.hidePageLoading();
     loadingEl.remove();
+}
+
+
+/* ---------- QuickBooks item of a product (1.0.39) ---------- */
+
+$( document ).ready(function(){
+    $( '#btn_qb_item_find' ).on( 'click', findQuickBooksItemBySku );
+    $( '#btn_qb_item_save' ).on( 'click', saveQuickBooksItem );
+    $( '#qb_item_matches' ).on( 'change', 'input[name="qb_item_match"]', function(){
+        $( '#qb_item_id' ).val( $( this ).val() );
+    });
+});
+
+/**
+ * @description Escapes text for HTML
+ * @param {string} text - Any text
+ * @returns {string}
+ */
+function qbEscape( text ){
+    return $( '<div>' ).text( text == null ? '' : String( text ) ).html();
+}
+
+/**
+ * @description Message of a webservice answer: info may be a text or an object with a message
+ * @param {*} info - jSon[ 'info' ]
+ * @returns {string}
+ */
+function qbAnswerMessage( info ){
+    if( info && ( typeof info === 'object' ) && info.message ){
+        return info.message;
+    }
+    return ( typeof info === 'string' ) ? info : 'Unexpected answer';
+}
+
+/**
+ * @description Posts set_crm_product_quickbooks_item and returns the parsed answer to the callback
+ * @param {object} data - product_id, action, item_id
+ * @param {function} callback - Called with ( ok, info )
+ */
+function postQuickBooksItem( data, callback ){
+    data.what_do_you_want = 'set_crm_product_quickbooks_item';
+    $.ajax({
+        url: getWebservice(),
+        type: 'POST',
+        dataType: 'json',
+        data: data,
+        success: function( returned_data ){
+            var jSon = parseJSONWithError( returned_data, "Server Side error occurred ! Contact Technical Support..." );
+            if( jSon == false ){
+                callback( false, 'Unexpected answer' );
+                return;
+            }
+            jSon = jSon[ 0 ];
+            callback( jSon[ 'type' ] == 'success', jSon[ 'info' ] );
+        },
+        error: function(){
+            callback( false, 'The server could not be reached. Please try again.' );
+        }
+    });
+}
+
+/**
+ * @description Opens the QuickBooks Item modal of a product row
+ * @param {HTMLElement} thees - Clicked icon link
+ * @param {Event} event - Click event
+ */
+function openQuickBooksItem( thees, event ){
+    event.preventDefault();
+    var tr      = $( thees ).closest( 'tr' );
+    var current = tr.attr( 'data-quickbooks-item' );
+    $( '#qb_item_product_id' ).val( tr.attr( 'data-product-id' ) );
+    $( '#qb_item_product_name' ).text( tr.find( '.product-name' ).text() );
+    $( '#qb_item_product_sku' ).text( tr.attr( 'data-sku' ) );
+    $( '#qb_item_current' ).html( current ? qbEscape( current ) : '<span class="badge rounded badge-warning">Not linked</span>' );
+    $( '#qb_item_id' ).val( current );
+    $( '#qb_item_matches' ).empty();
+    $( '#modal_quickbooks_item' ).modal( 'show' );
+}
+
+/**
+ * @description Read-only search of the QuickBooks items with the product's SKU; one match is filled in
+ */
+function findQuickBooksItemBySku(){
+    var box = $( '#qb_item_matches' );
+    var btn = $( '#btn_qb_item_find' );
+    box.html( '<span class="text-muted">Searching QuickBooks...</span>' );
+    btn.prop( 'disabled', true );
+    postQuickBooksItem( { product_id: $( '#qb_item_product_id' ).val(), action: 'find' }, function( ok, info ){
+        btn.prop( 'disabled', false );
+        if( !ok ){
+            box.html( '<div class="text-danger">' + qbEscape( qbAnswerMessage( info ) ) + '</div>' );
+            return;
+        }
+        var items = info.items || [];
+        if( items.length === 0 ){
+            box.html( '<div class="text-warning">No active QuickBooks item has SKU ' + qbEscape( info.sku ) +
+                      '. Add the SKU to the item in QuickBooks, or type the item ID below.</div>' );
+            return;
+        }
+        var html = '';
+        $.each( items, function( i, it ){
+            html += '<div class="form-check mb-2">' +
+                        '<input class="form-check-input" type="radio" name="qb_item_match" id="qb_item_match_' + i + '" value="' + qbEscape( it.id ) + '"' + ( items.length === 1 ? ' checked' : '' ) + ' />' +
+                        '<label class="form-check-label" for="qb_item_match_' + i + '">' + qbEscape( it.id ) + ' - ' + qbEscape( it.name ) + '</label>' +
+                    '</div>';
+        });
+        box.html( html );
+        if( items.length === 1 ){
+            $( '#qb_item_id' ).val( items[ 0 ].id );
+        }
+    });
+}
+
+/**
+ * @description Saves the QuickBooks item ID of the product, then reloads the list
+ */
+function saveQuickBooksItem(){
+    var item_id = $.trim( $( '#qb_item_id' ).val() );
+    if( !/^[0-9]{1,15}$/.test( item_id ) ){
+        showSimpleSweetAlert( 'QuickBooks item ID: digits only', 'error', 'Okay', 'btn btn-primary' );
+        return;
+    }
+    var btn = $( '#btn_qb_item_save' );
+    btn.prop( 'disabled', true );
+    postQuickBooksItem( { product_id: $( '#qb_item_product_id' ).val(), action: 'save', item_id: item_id }, function( ok, info ){
+        btn.prop( 'disabled', false );
+        if( !ok ){
+            showSimpleSweetAlert( qbEscape( qbAnswerMessage( info ) ), 'error', 'Okay', 'btn btn-primary' );
+            return;
+        }
+        $( '#modal_quickbooks_item' ).modal( 'hide' );
+        showSimpleToast( 'success', qbAnswerMessage( info ) );
+        loadAllProductsIntoTable();
+    });
 }

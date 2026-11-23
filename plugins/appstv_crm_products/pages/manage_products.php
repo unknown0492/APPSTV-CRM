@@ -52,6 +52,7 @@ checkAuthorizationForPage( 'manage_products' );
                                 <th class="min-w-100px">Name</th>
                                 <th class="min-w-50px">Physical Product</th>
                                 <th class="min-w-50px">Price</th>
+                                <th class="min-w-100px">QuickBooks Item</th>
                                 <th class="min-w-30px">Actions</th>
                             </tr>
                         </thead>
@@ -435,6 +436,43 @@ checkAuthorizationForPage( 'manage_products' );
 </div>
 <!-- Modal - Product Inventory Modal ENDS -->
 
+
+<!-- QuickBooks item of a product (1.0.39): Shopify invoices use it for the product's lines -->
+<div class="modal fade" tabindex="-1" id="modal_quickbooks_item">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content rounded">
+            <div class="modal-header">
+                <h3 class="modal-title">QuickBooks Item</h3>
+                <div class="btn btn-icon btn-sm btn-active-light-primary ms-2" data-bs-dismiss="modal" aria-label="Close">
+                    <i class="ki-duotone ki-cross fs-1"><span class="path1"></span><span class="path2"></span></i>
+                </div>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="qb_item_product_id" value="" />
+                <table class="table table-bordered mb-7">
+                    <tr><th class="w-150px">Product:</th><td id="qb_item_product_name"></td></tr>
+                    <tr><th class="w-150px">SKU:</th><td id="qb_item_product_sku"></td></tr>
+                    <tr><th class="w-150px">Linked item:</th><td id="qb_item_current"></td></tr>
+                </table>
+
+                <button type="button" id="btn_qb_item_find" class="btn btn-sm btn-light-primary mb-5">
+                    <i class="fa-solid fa-magnifying-glass me-1"></i>Find by SKU in QuickBooks
+                </button>
+                <div id="qb_item_matches" class="mb-5"></div>
+
+                <div class="form-floating">
+                    <input type="text" class="form-control rounded form-control-solid" id="qb_item_id" maxlength="15" autocomplete="off" placeholder="" />
+                    <label for="qb_item_id">QuickBooks item ID*</label>
+                </div>
+                <div class="form-text">Shopify orders of this product are invoiced with this QuickBooks item.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light rounded" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="btn_qb_item_save" class="btn btn-primary rounded">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script src="assets/plugins/custom/datatables/datatables.bundle.js"></script>
 <script src="assets/scodezy/js/moment/moment.js"></script>

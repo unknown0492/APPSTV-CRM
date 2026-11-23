@@ -1,6 +1,8 @@
 var table_name = "table_orders";   
 var table = "#" + table_name;   // The id with # of the table id that will have the datatables. Used multiple times at multiple places, so declared globally inside the file
 var DataTableOrders = null;
+var canCreateQuickBooksInvoice = false;       // 1.0.39: set from get_crm_orders
+var canMarkQuickBooksInvoiceManual = false;   // 1.0.39: set from get_crm_orders
 var DataTableOrdersParameters = null;
 const loadingEl = document.createElement("div");
 var select_parent_page_original_data = "";
@@ -1589,7 +1591,8 @@ function createTableRow( value ){
                     '<input class="form-check-input table-children-checkbox" type="checkbox" value="" id="flexRadioLg" />' +
                  '</div>' +
             '</td>\n';
-    html += '<td>'+ value.order_id +'</td>\n';
+    var shopify_name = value.shopify_order_name ? '<div class="text-muted fs-7">' + qbEscape( value.shopify_order_name ) + '</div>' : '';
+    html += '<td>'+ value.order_id + shopify_name +'</td>\n';
     html += '<td>'+ value.source_name +'</td>\n';
     html += '<td data-created-at="'+value.created_at+'">'+ dbTimestampToSingaporeTimestampWithAgo( value.created_at ) +'</td>\n';
     var cancelled = (value.is_cancelled=="1")?'<span class="badge rounded badge-danger">YES</span>':'<span class="badge rounded badge-info">NO</span>';
@@ -1601,6 +1604,7 @@ function createTableRow( value ){
     html += '<td data-key="order_status">'+ order_status +'</td>\n';
     html += '<td data-products="'+ value.products +'"><a href="#" onclick="viewOrderItems( event, this,\''+ value.source_name +'\' );">View</a></td>\n';
     html += '<td>'+ value.total_price +'</td>\n';
+    html += '<td>'+ quickBooksInvoiceCell( value ) +'</td>\n';
     //html += '<td><a href="#" class="" title="Edit Order" onclick="editOrder(this,event);"><i class="fa-regular fs-2x text-primary fa-pen-to-square"></i></a>\n';
     
     var action_view_order = '<div class="menu-item px-3">' + 
@@ -1613,24 +1617,40 @@ function createTableRow( value ){
     var action_confirm_delivery = '<div class="menu-item px-3">' + 
                                     '<a href="#" class="menu-link px-3 text-left" onclick="confirmDelivery(this,event);">Confirm Delivery</a>' + 
                                   '</div>';
+    // 1.0.39: QuickBooks invoice actions, for an order without an invoice
+    var action_quickbooks = '';
+    if( !value.quickbooks_invoice_id && ( value.quickbooks_invoice_manual != "1" ) && ( value.is_cancelled != "1" ) ){
+        if( canCreateQuickBooksInvoice ){
+            action_quickbooks += '<div class="menu-item px-3">' +
+                                     '<a href="#" class="menu-link px-3 text-left" onclick="createQuickBooksInvoice(this,event);">Create QuickBooks Invoice</a>' +
+                                 '</div>';
+        }
+        if( canMarkQuickBooksInvoiceManual ){
+            action_quickbooks += '<div class="menu-item px-3">' +
+                                     '<a href="#" class="menu-link px-3 text-left" onclick="markQuickBooksInvoiceManual(this,event);">Mark Invoice Made by Hand</a>' +
+                                 '</div>';
+        }
+    }
+
     var actions = '';
     if( (value.order_status == "delivered") || 
             (value.order_status == "partially_delivered") || 
             (value.order_status == "cancelled") ){
         
-        actions = action_view_order;
+        actions = action_view_order + action_quickbooks;
     }
     else{
-        actions = action_view_order + 
-                    action_prepare_order +  
-                    action_confirm_delivery;
+        actions = action_view_order +
+                    action_prepare_order +
+                    action_confirm_delivery +
+                    action_quickbooks;
     }
     
     html += '<td class="">' + 
                 '<a href="#" class="btn btn-light btn-active-light-primary btn-flex btn-center btn-sm float-end" data-kt-menu-trigger="click" data-kt-menu-placement="bottom-end">Actions' + 
                     '<i class="ki-outline ki-down fs-5 ms-1"></i>' + 
                 '</a>' +
-                '<div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-125px py-4" data-kt-menu="true">' + 
+                '<div class="menu menu-sub menu-sub-dropdown menu-column menu-rounded menu-gray-600 menu-state-bg-light-primary fw-semibold fs-7 w-225px py-4" data-kt-menu="true">' +
                     actions
                 '</div>' + 
             '</td>';
@@ -1690,7 +1710,10 @@ function loadAllOrdersIntoTable(){
             var data    = info[ 'data' ];
             console.log( info );
             console.log( data );
-            
+
+            canCreateQuickBooksInvoice     = ( info[ 'can_create_quickbooks_invoice' ] == 1 );
+            canMarkQuickBooksInvoiceManual = ( info[ 'can_mark_quickbooks_invoice_manual' ] == 1 );
+
             var html = '';
             
             $.each( data, function( i, v ){
@@ -1844,11 +1867,11 @@ function initDataTable(){
         columnDefs: [
             {// set default column settings
                 orderable: false,
-                targets: [0, 8]
+                targets: [0, 9]
             },
             {
                 searchable: false,
-                targets: [0, 8]
+                targets: [0, 9]
             },
             {
                 className: "text-left",
@@ -1936,4 +1959,126 @@ function showDataTableLoading(){
 function hideDataTableLoading(){
     KTApp.hidePageLoading();
     loadingEl.remove();
+}
+
+
+/* ---------- QuickBooks invoice (1.0.39) ---------- */
+
+/**
+ * @description Escapes text for HTML
+ * @param {string} text - Any text
+ * @returns {string}
+ */
+function qbEscape( text ){
+    return $( '<div>' ).text( text == null ? '' : String( text ) ).html();
+}
+
+/**
+ * @description QuickBooks column of an order: invoice number, made by hand, failed (reason on hover) or none
+ * @param {object} value - Order row from get_crm_orders
+ * @returns {string} HTML
+ */
+function quickBooksInvoiceCell( value ){
+    if( value.quickbooks_invoice_id ){
+        return '<span class="badge rounded badge-success">' + qbEscape( value.quickbooks_invoice_number || value.quickbooks_invoice_id ) + '</span>';
+    }
+    if( value.quickbooks_invoice_manual == "1" ){
+        return '<span class="badge rounded badge-info">Made by hand' + ( value.quickbooks_invoice_number ? ' ' + qbEscape( value.quickbooks_invoice_number ) : '' ) + '</span>';
+    }
+    if( value.quickbooks_invoice_error ){
+        return '<span class="badge rounded badge-danger" title="' + qbEscape( value.quickbooks_invoice_error ) + '">Failed</span>' +
+               '<div class="text-muted fs-8 mw-200px text-truncate" title="' + qbEscape( value.quickbooks_invoice_error ) + '">' + qbEscape( value.quickbooks_invoice_error ) + '</div>';
+    }
+    return '<span class="text-muted">None</span>';
+}
+
+/**
+ * @description Message of a webservice answer: info may be a text or an object with a message
+ * @param {*} info - jSon[ 'info' ]
+ * @returns {string}
+ */
+function qbAnswerMessage( info ){
+    if( info && ( typeof info === 'object' ) && info.message ){
+        return info.message;
+    }
+    return ( typeof info === 'string' ) ? info : 'Unexpected answer';
+}
+
+/**
+ * @description Posts a QuickBooks invoice action, shows the result and reloads the orders
+ * @param {object} data - Request data (what_do_you_want, order_id ...)
+ */
+function postQuickBooksInvoiceAction( data ){
+    showLoadingSweetAlert( 'Please wait', 'Talking to QuickBooks...', false );
+    $.ajax({
+        url: getWebservice(),
+        type: 'POST',
+        dataType: 'json',
+        data: data,
+        success: function( returned_data ){
+            hideLoadingSweetAlert();
+            var jSon = parseJSONWithError( returned_data, "Server Side error occurred ! Contact Technical Support..." );
+            if( jSon == false ){
+                return;
+            }
+            jSon = jSon[ 0 ];
+            var message = qbAnswerMessage( jSon[ 'info' ] );
+            showSimpleSweetAlert( qbEscape( message ), ( jSon[ 'type' ] == 'success' ) ? 'success' : 'error', 'Okay', 'btn btn-primary' );
+            loadAllOrdersIntoTable();
+        },
+        error: function(){
+            hideLoadingSweetAlert();
+            showSimpleSweetAlert( 'The server could not be reached. Please try again.', 'error', 'Okay', 'btn btn-primary' );
+        }
+    });
+}
+
+/**
+ * @description "Create QuickBooks Invoice" on an order row: asks to check QuickBooks first, then creates it
+ * @param {HTMLElement} thees - Clicked menu link
+ * @param {Event} event - Click event
+ */
+function createQuickBooksInvoice( thees, event ){
+    event.preventDefault();
+    var tr       = $( thees ).closest( 'tr' );
+    var order_id = tr.attr( 'data-order-id' );
+    showConfirmSweetAlert( 'Create QuickBooks invoice?',
+        'Order <b>' + qbEscape( order_id ) + '</b>.<br>Check in QuickBooks first that this order has no invoice yet, so it is not made twice.',
+        'question', 'Create Invoice', 'btn btn-primary', 'Cancel', 'btn btn-light',
+        function(){
+            postQuickBooksInvoiceAction( { what_do_you_want: 'create_crm_order_quickbooks_invoice', order_id: order_id } );
+        } );
+}
+
+/**
+ * @description "Mark Invoice Made by Hand" on an order row: the invoice was made in QuickBooks directly
+ * @param {HTMLElement} thees - Clicked menu link
+ * @param {Event} event - Click event
+ */
+function markQuickBooksInvoiceManual( thees, event ){
+    event.preventDefault();
+    var tr       = $( thees ).closest( 'tr' );
+    var order_id = tr.attr( 'data-order-id' );
+    Swal.fire({
+        title: 'Invoice made by hand?',
+        html: 'Order <b>' + qbEscape( order_id ) + '</b>: the CRM will not create a QuickBooks invoice for it.',
+        icon: 'question',
+        input: 'text',
+        inputLabel: 'QuickBooks invoice number (optional)',
+        inputAttributes: { maxlength: 30, autocomplete: 'off' },
+        inputValidator: function( value ){
+            if( value && !/^[0-9A-Za-z\/ _-]{1,30}$/.test( value ) ){
+                return 'Up to 30 letters, digits, spaces, - _ /';
+            }
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Mark as Made by Hand',
+        cancelButtonText: 'Cancel',
+        buttonsStyling: false,
+        customClass: { confirmButton: 'btn btn-primary', cancelButton: 'btn btn-light' }
+    }).then(( result ) => {
+        if( result.isConfirmed ){
+            postQuickBooksInvoiceAction( { what_do_you_want: 'mark_crm_order_quickbooks_invoice_manual', order_id: order_id, invoice_number: result.value || '' } );
+        }
+    });
 }

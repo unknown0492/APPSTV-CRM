@@ -29,7 +29,13 @@ function get_crm_orders(){
             . "products, "
             . "is_cancelled, "
             . "test, "
-            . "total_price "
+            . "total_price, "
+            // 1.0.39: Shopify order name (#SY-...) and the QuickBooks invoice state of each order
+            . "( SELECT m.order_meta_value FROM order_meta m WHERE m.order_id = orders.order_id AND m.order_meta_key = 'shopify_order_name' LIMIT 1 ) AS shopify_order_name, "
+            . "( SELECT m.order_meta_value FROM order_meta m WHERE m.order_id = orders.order_id AND m.order_meta_key = 'quickbooks_invoice_id' LIMIT 1 ) AS quickbooks_invoice_id, "
+            . "( SELECT m.order_meta_value FROM order_meta m WHERE m.order_id = orders.order_id AND m.order_meta_key = 'quickbooks_invoice_number' LIMIT 1 ) AS quickbooks_invoice_number, "
+            . "( SELECT m.order_meta_value FROM order_meta m WHERE m.order_id = orders.order_id AND m.order_meta_key = 'quickbooks_invoice_error' LIMIT 1 ) AS quickbooks_invoice_error, "
+            . "( SELECT m.order_meta_value FROM order_meta m WHERE m.order_id = orders.order_id AND m.order_meta_key = 'quickbooks_invoice_manual' LIMIT 1 ) AS quickbooks_invoice_manual "
         . "FROM orders, sources "
             . "WHERE (orders.order_source=sources.source_id) $where_query_filter "
             . "ORDER BY id DESC";
@@ -51,11 +57,88 @@ function get_crm_orders(){
     
     $responseData[ 'message' ] = 'Orders have been retrieved';
     $responseData[ 'data' ] = $orders;
+    // 1.0.39: which QuickBooks invoice actions the Orders page shows to this user
+    $responseData[ 'can_create_quickbooks_invoice' ]      = hasAuthorization( 'create_crm_order_quickbooks_invoice' ) ? 1 : 0;
+    $responseData[ 'can_mark_quickbooks_invoice_manual' ] = hasAuthorization( 'mark_crm_order_quickbooks_invoice_manual' ) ? 1 : 0;
     
     echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, $responseData );
     
 }
 
+
+/**
+ * Creates the QuickBooks invoice of an order that has none (1.0.39), e.g. after the Shopify webhook failed.
+ * Refused when the order already has an invoice, when it was marked as made by hand, or when it is cancelled.
+ * A failure is stored on the order and emailed (createQuickBooksInvoiceForOrder).
+ *
+ * Request: order_id
+ */
+function create_crm_order_quickbooks_invoice(){
+    checkAuthorizationForFunction( __FUNCTION__ );
+    send_json_mime_type_header();
+
+    $order_id = trim( (string) request( 'order_id' ) );
+    validateEmptyString( $order_id, __FUNCTION__, "Order ID is required" );
+    if( !preg_match( '/^[0-9A-Za-z_-]{1,40}$/', $order_id ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "Order ID is invalid" );
+        return;
+    }
+
+    $order = new Order();
+    if( $order->readOrder( $order_id ) === NULL ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "No such order" );
+        return;
+    }
+    if( $order->getIsCancelled() == "1" ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "This order is cancelled: no invoice is made" );
+        return;
+    }
+
+    $result = createQuickBooksInvoiceForOrder( $order_id, "Create QuickBooks Invoice on the Orders page" );
+    echo createJSONMessage( $result[ 'ok' ] ? GENERAL_SUCCESS_MESSAGE : GENERAL_ERROR_MESSAGE, __FUNCTION__, $result );
+}
+
+/**
+ * Marks an order's invoice as made by hand in QuickBooks (1.0.39): the CRM then doesn't show it as failed and never
+ * makes another one. The invoice number is optional and shown on the Orders page.
+ *
+ * Request: order_id, invoice_number (optional)
+ */
+function mark_crm_order_quickbooks_invoice_manual(){
+    checkAuthorizationForFunction( __FUNCTION__ );
+    send_json_mime_type_header();
+
+    $order_id       = trim( (string) request( 'order_id' ) );
+    $invoice_number = trim( (string) request( 'invoice_number' ) );
+    validateEmptyString( $order_id, __FUNCTION__, "Order ID is required" );
+    if( !preg_match( '/^[0-9A-Za-z_-]{1,40}$/', $order_id ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "Order ID is invalid" );
+        return;
+    }
+    if( ( $invoice_number !== '' ) && !preg_match( '/^[0-9A-Za-z\/ _-]{1,30}$/', $invoice_number ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "Invoice number: up to 30 letters, digits, spaces, - _ /" );
+        return;
+    }
+
+    $order = new Order();
+    if( $order->readOrder( $order_id ) === NULL ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "No such order" );
+        return;
+    }
+    $existing = OrderMeta::getOrderMetaValue( $order_id, OrderMeta::DB_ORDER_META_KEY_QUICKBOOKS_INVOICE_ID );
+    if( ( $existing !== NULL ) && ( $existing !== '' ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "This order already has a QuickBooks invoice made by the CRM" );
+        return;
+    }
+
+    OrderMeta::setOrderMetaValue( $order_id, ORDER_META_QUICKBOOKS_INVOICE_MANUAL, '1' );
+    if( $invoice_number !== '' ){
+        OrderMeta::setOrderMetaValue( $order_id, OrderMeta::DB_ORDER_META_KEY_QUICKBOOKS_INVOICE_NUMBER, escape_string( $invoice_number ) );
+    }
+    OrderMeta::deleteOrderMetaValue( $order_id, ORDER_META_QUICKBOOKS_INVOICE_ERROR );
+
+    echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, array( 'message' => "The invoice is marked as made by hand in QuickBooks" ) );
+}
 
 /**
  * Retrieve all the data for the provided order_id
