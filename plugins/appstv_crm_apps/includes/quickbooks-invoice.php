@@ -57,8 +57,14 @@ function getAllQuickBooksItems( $dataService, &$error ){
     if( isset( $cache[ $dataService ] ) ){
         return $cache[ $dataService ];
     }
-    $result = $dataService->Query( "SELECT * FROM Item STARTPOSITION 1 MAXRESULTS 1000" );
-    $fault  = $dataService->getLastError();
+    ob_start();                       // The SDK may print notices: keep them out of the JSON answer
+    try{
+        $result = $dataService->Query( "SELECT * FROM Item STARTPOSITION 1 MAXRESULTS 1000" );
+        $fault  = $dataService->getLastError();
+    }
+    finally{
+        ob_end_clean();
+    }
     if( $fault ){
         $error = "QuickBooks items could not be read: " . quickbooksFaultMessage( $fault );
         return NULL;
@@ -244,6 +250,26 @@ function createQuickBooksInvoiceForOrder( $order_id, $trigger, $dataService = NU
         return array( 'ok' => false, 'message' => $reason, 'invoice_id' => '', 'invoice_number' => '' );
     };
 
+    // Anything the QuickBooks SDK prints (e.g. PHP 8.5 "Deprecated: curl_close()" when error display is on) is
+    // discarded, so the Orders page's JSON answer stays valid (1.0.41)
+    ob_start();
+    try{
+        return createQuickBooksInvoiceForOrderQuiet( $order, $e_order_id, $dataService, $fail );
+    }
+    finally{
+        ob_end_clean();
+    }
+}
+
+/**
+ * @description The work of createQuickBooksInvoiceForOrder, run while its output is discarded
+ * @param Order $order - The order (read)
+ * @param string $e_order_id - Escaped order ID
+ * @param object|null $dataService - QuickBooks DataService (NULL = the CRM's own connection)
+ * @param callable $fail - Stores + emails a failure reason and returns the failure result
+ * @return array Same as createQuickBooksInvoiceForOrder
+ */
+function createQuickBooksInvoiceForOrderQuiet( $order, $e_order_id, $dataService, $fail ){
     try{
         if( $dataService === NULL ){
             quickbooksLoadSdk();

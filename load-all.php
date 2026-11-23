@@ -74,6 +74,17 @@ for( $i = 0 ; $i < count( $pluginsDirectory ) ; $i++ ){
     }
 }
 
-display_php_errors();
+// 1.0.41: PHP errors and notices go to the PHP error log, never into pages or API answers. Shown here since the
+// first version, they broke every JSON answer that calls QuickBooks once the site ran PHP 8.5 (the QuickBooks SDK
+// prints a "Deprecated: curl_close()" notice) and showed internals to visitors. Still shown on a local PC.
+if( in_array( isset( $_SERVER[ 'SERVER_NAME' ] ) ? $_SERVER[ 'SERVER_NAME' ] : '', array( 'localhost', '127.0.0.1' ), true ) ){
+    display_php_errors();
+}
+else{
+    ini_set( 'display_errors', '0' );
+    ini_set( 'display_startup_errors', '0' );
+    ini_set( 'log_errors', '1' );
+    error_reporting( E_ALL );
+}
 
 ?>
