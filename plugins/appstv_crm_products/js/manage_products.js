@@ -647,6 +647,25 @@ function quickBooksNameTooltip( value ){
     return 'QuickBooks: ' + value.quickbooks_product_name;
 }
 
+/**
+ * @description Serial Nos cell of a product (1.0.45): the total in the system, with sold / in stock underneath.
+ *              A product without serial numbers (has_sn = 0) shows a dash. Sorting uses the total (dash = -1).
+ * @param {Object} value - a product from get_crm_products (has_sn, sn_total, sn_sold)
+ * @returns {String} the <td>
+ */
+function serialNumbersCell( value ){
+    if( value.has_sn != "1" ){
+        return '<td data-order="-1"><span class="text-muted">&mdash;</span></td>\n';
+    }
+    var total = parseInt( value.sn_total, 10 ) || 0,
+        sold  = parseInt( value.sn_sold, 10 ) || 0,
+        fmt   = function( n ){ return n.toLocaleString( 'en-US' ); };
+    return '<td data-order="'+ total +'">' +
+                '<div class="fw-bold">'+ fmt( total ) +'</div>' +
+                '<div class="text-muted fs-7 text-nowrap">'+ fmt( sold ) +' sold &middot; '+ fmt( total - sold ) +' in stock</div>' +
+           '</td>\n';
+}
+
 function createTableRow( value ){
     var html = '<tr class="product-item" data-id="'+ value.id +'" data-product-id="'+ value.product_id +'"' +
                ' data-sku="'+ qbEscape( value.sku ) +'" data-quickbooks-item="'+ qbEscape( value.quickbooks_product_id || '' ) +'">\n';
@@ -662,6 +681,7 @@ function createTableRow( value ){
     var physical_product = (value.physical_product=="1")?'<span class="badge rounded badge-success">YES</span>':'<span class="badge rounded badge-info">NO</span>';
     html += '<td>'+ physical_product +'</td>\n';       
     html += '<td>'+ value.price +'</td>\n';
+    html += serialNumbersCell( value );        // 1.0.45
     // 1.0.39: QuickBooks item used for this product on Shopify invoices
     html += '<td>' + ( value.quickbooks_product_id ? qbEscape( value.quickbooks_product_id ) : '<span class="badge rounded badge-warning">Not linked</span>' ) + '</td>\n';
     var action_quickbooks = canLinkQuickBooks ?
@@ -885,11 +905,11 @@ function initDataTable(){
         columnDefs: [
             {// set default column settings
                 orderable: false,
-                targets: [0, 7]
+                targets: [0, 8]         // 1.0.45: Actions moved to 8 (Serial Nos is column 6)
             },
             {
                 searchable: false,
-                targets: [0, 7]
+                targets: [0, 6, 8]
             },
             {
                 className: "text-left",

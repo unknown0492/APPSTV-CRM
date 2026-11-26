@@ -24,17 +24,24 @@ function get_crm_products(){
     send_json_mime_type_header();
     
     $sql = "SELECT "
-            . "id, "
-            . "product_id, "
-            . "sku, "
-            . "name, "
-            . "physical_product, "
-            . "price, "
-            . "quickbooks_product_name, "     // 1.0.42: name of the linked QuickBooks item ('' = not synced yet)
+            . "products.id, "
+            . "products.product_id, "
+            . "products.sku, "
+            . "products.name, "
+            . "products.physical_product, "
+            . "products.price, "
+            . "products.quickbooks_product_name, "     // 1.0.42: name of the linked QuickBooks item ('' = not synced yet)
             // 1.0.39: the QuickBooks item each product is invoiced as (empty = not linked)
-            . "( SELECT pm.product_meta_value FROM product_meta pm WHERE pm.product_id = products.product_id AND pm.product_meta_key = 'quickbooks_product_id' LIMIT 1 ) AS quickbooks_product_id "
+            . "( SELECT pm.product_meta_value FROM product_meta pm WHERE pm.product_id = products.product_id AND pm.product_meta_key = 'quickbooks_product_id' LIMIT 1 ) AS quickbooks_product_id, "
+            // 1.0.45: serial numbers in the system (product_sn), shown on Manage Products when has_sn = 1.
+            // Sold = allotted to a customer; the rest are in stock.
+            . "products.has_sn, "
+            . "COALESCE( sn.sn_total, 0 ) AS sn_total, "
+            . "COALESCE( sn.sn_sold, 0 ) AS sn_sold "
         . "FROM products "
-            . "ORDER BY id DESC";
+        . "LEFT JOIN ( SELECT product_id, COUNT(*) AS sn_total, SUM( allotted_to_customer <> 0 ) AS sn_sold "
+            . "FROM product_sn GROUP BY product_id ) sn ON sn.product_id = products.product_id "
+            . "ORDER BY products.id DESC";
     $result_set = selectQuery( $sql );
     
     // No orders exist yet

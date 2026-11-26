@@ -56,6 +56,7 @@ checkAuthorizationForPage( 'manage_products' );
                                 <th class="min-w-100px">Name</th>
                                 <th class="min-w-50px">Physical Product</th>
                                 <th class="min-w-50px">Price</th>
+                                <th class="min-w-125px">Serial Nos</th><!-- 1.0.45: count in the system when the product has serial numbers -->
                                 <th class="min-w-100px">QuickBooks Item</th>
                                 <th class="min-w-30px">Actions</th>
                             </tr>
