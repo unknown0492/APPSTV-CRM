@@ -30,6 +30,7 @@ function get_crm_products(){
             . "name, "
             . "physical_product, "
             . "price, "
+            . "quickbooks_product_name, "     // 1.0.42: name of the linked QuickBooks item ('' = not synced yet)
             // 1.0.39: the QuickBooks item each product is invoiced as (empty = not linked)
             . "( SELECT pm.product_meta_value FROM product_meta pm WHERE pm.product_id = products.product_id AND pm.product_meta_key = 'quickbooks_product_id' LIMIT 1 ) AS quickbooks_product_id "
         . "FROM products "
@@ -52,7 +53,8 @@ function get_crm_products(){
     $responseData[ 'message' ] = 'Products have been retrieved';
     $responseData[ 'data' ] = $products;
     $responseData[ 'can_link_quickbooks' ] = hasAuthorization( 'set_crm_product_quickbooks_item' ) ? 1 : 0;      // 1.0.39
-    
+    $responseData[ 'can_sync_quickbooks_names' ] = hasAuthorization( 'sync_crm_products_quickbooks_names' ) ? 1 : 0;   // 1.0.42
+
     echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, $responseData );
 }
 
@@ -123,10 +125,80 @@ function set_crm_product_quickbooks_item(){
     }
 
     ProductMeta::setProductMetaValue( $product_id, ProductMeta::DB_PRODUCT_META_KEY_QUICKBOOKS_PRODUCT_ID, $item_id );
+    quickbooksStoreProductName( $product_id, (string) $found->Name );         // 1.0.42: keep the QuickBooks name too
     echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, array(
         'message' => "Linked to QuickBooks item " . $item_id . " (" . $found->Name . ")",
         'item_id' => $item_id,
         'name'    => (string) $found->Name
+    ) );
+}
+
+/**
+ * Copies the names of the linked QuickBooks items into products.quickbooks_product_name (1.0.42). Read only on the
+ * QuickBooks side. Manage Products shows the name when the product name is hovered.
+ *   product_id : one product (the row's Sync icon); empty = every linked product ("Sync names from QuickBooks")
+ */
+function sync_crm_products_quickbooks_names(){
+    checkAuthorizationForFunction( __FUNCTION__ );
+    send_json_mime_type_header();
+
+    $product_id = trim( (string) request( 'product_id' ) );     // One product, or '' for all linked products
+    if( ( $product_id !== '' ) && !preg_match( '/^[0-9A-Za-z_-]{1,40}$/', $product_id ) ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "Invalid request" );
+        return;
+    }
+    if( $product_id !== '' ){
+        $result_set = selectQuery( "SELECT product_id FROM products WHERE product_id = '$product_id'" );
+        if( mysqli_num_rows( $result_set ) === 0 ){
+            echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "No such product" );
+            return;
+        }
+        if( ( (string) ProductMeta::getQuickBooksProductID( $product_id ) ) === '' ){
+            echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "This product is not linked to a QuickBooks item yet. Link it with the QuickBooks Item icon first." );
+            return;
+        }
+    }
+
+    quickbooksLoadSdk();
+    $dataService = getQuickBooksDataService();
+    if( $dataService === NULL ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "The CRM is not connected to QuickBooks" );
+        return;
+    }
+    $error   = '';
+    $summary = quickbooksSyncProductNames( $dataService, ( $product_id === '' ) ? NULL : $product_id, $error );
+    if( $summary === NULL ){
+        echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, $error );
+        return;
+    }
+
+    // One readable line for the toast; the details go along for the page
+    if( $product_id !== '' ){
+        if( count( $summary[ 'missing' ] ) > 0 ){
+            echo createJSONMessage( GENERAL_ERROR_MESSAGE, __FUNCTION__, "The linked QuickBooks item no longer exists in QuickBooks: " . $summary[ 'missing' ][ 0 ] );
+            return;
+        }
+        $name    = $summary[ 'names' ][ $product_id ];
+        $message = "QuickBooks name: " . $name . ( $summary[ 'updated' ] > 0 ? " (updated)" : " (no change)" );
+    }
+    else{
+        $message = "QuickBooks names synced: " . $summary[ 'updated' ] . " updated, " . $summary[ 'unchanged' ] . " unchanged"
+                 . " (" . $summary[ 'linked' ] . " linked products)";
+        if( count( $summary[ 'missing' ] ) > 0 ){
+            $message .= ". Not found in QuickBooks: " . implode( ', ', $summary[ 'missing' ] );
+        }
+    }
+    if( count( $summary[ 'inactive' ] ) > 0 ){
+        $message .= ". Inactive in QuickBooks: " . implode( ', ', $summary[ 'inactive' ] );
+    }
+
+    echo createJSONMessage( GENERAL_SUCCESS_MESSAGE, __FUNCTION__, array(
+        'message'   => $message,
+        'linked'    => $summary[ 'linked' ],
+        'updated'   => $summary[ 'updated' ],
+        'unchanged' => $summary[ 'unchanged' ],
+        'missing'   => $summary[ 'missing' ],
+        'inactive'  => $summary[ 'inactive' ]
     ) );
 }
 
@@ -482,6 +554,10 @@ function get_crm_product_inventory(){
             // Update this count into ProductMeta table
             ProductMeta::setProductMetaValue( $e_product_id, ProductMeta::DB_PRODUCT_META_KEY_QUICKBOOKS_INVENTORY_COUNT, $current_inventory_count );
         //}
+        // 1.0.42: the item was read anyway, keep its QuickBooks name current
+        if( isset( $item_retrieved->Name ) ){
+            quickbooksStoreProductName( $e_product_id, (string) $item_retrieved->Name );
+        }
         //print_r( $items );
         
     }
@@ -638,6 +714,11 @@ function update_crm_product_inventory(){
             
             // Update this count into ProductMeta table
             ProductMeta::setProductMetaValue( $e_product_id, ProductMeta::DB_PRODUCT_META_KEY_QUICKBOOKS_INVENTORY_COUNT, $total_inventory_count );
+
+            // 1.0.42: QuickBooks answered with the whole item, keep its QuickBooks name current
+            if( isset( $item_updated->Name ) ){
+                quickbooksStoreProductName( $e_product_id, (string) $item_updated->Name );
+            }
 
             // Update this count in the product_inventory_history table
             ProductInventoryHistory::addToProductInventoryHistory( $e_product_id, $e_source, $e_new_inventory_count );

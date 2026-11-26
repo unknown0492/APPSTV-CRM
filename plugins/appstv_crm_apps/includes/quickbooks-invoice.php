@@ -95,6 +95,74 @@ function quickbooksItemsBySku( $dataService, $sku, &$error ){
 }
 
 /**
+ * @description Stores the QuickBooks item name of a CRM product in products.quickbooks_product_name (1.0.42)
+ * @param string $product_id - CRM product_id
+ * @param string $name - Name of the linked QuickBooks item, as QuickBooks has it
+ * @return bool TRUE when the stored name changed
+ */
+function quickbooksStoreProductName( $product_id, $name ){
+    $e_product_id = escape_string( (string) $product_id );                            // Escaped CRM product_id
+    $e_name       = escape_string( mb_substr( trim( (string) $name ), 0, 200 ) );     // Escaped name, cut to the column size
+    $rows = updateQuery( "UPDATE products SET quickbooks_product_name = '$e_name' WHERE product_id = '$e_product_id'" );
+    return ( $rows > 0 );
+}
+
+/**
+ * @description Copies the names of the linked QuickBooks items into the CRM products (1.0.42). Reads QuickBooks once
+ *              (getAllQuickBooksItems); never writes to QuickBooks.
+ * @param object $dataService - QuickBooks DataService
+ * @param string|null $product_id - One CRM product_id, or NULL for every linked product
+ * @param string &$error - Set to the reason when QuickBooks could not be read
+ * @return array|null array( 'linked', 'updated', 'unchanged', 'missing' => [ texts ], 'inactive' => [ texts ],
+ *                    'names' => [ product_id => QuickBooks name ] ), or NULL on error
+ */
+function quickbooksSyncProductNames( $dataService, $product_id, &$error ){
+    $items = getAllQuickBooksItems( $dataService, $error );
+    if( $items === NULL ){
+        return NULL;
+    }
+
+    $by_id = array();                 // QuickBooks item ID => IPPItem
+    foreach( $items as $item ){
+        $by_id[ (string) $item->Id ] = $item;
+    }
+
+    $where = "";                      // Optional filter on one product
+    if( $product_id !== NULL ){
+        $where = " AND p.product_id = '" . escape_string( (string) $product_id ) . "'";
+    }
+    $result_set = selectQuery( "SELECT p.product_id, p.sku, p.quickbooks_product_name, pm.product_meta_value AS item_id "
+                             . "FROM products p "
+                             . "JOIN product_meta pm ON pm.product_id = p.product_id AND pm.product_meta_key = 'quickbooks_product_id' "
+                             . "WHERE pm.product_meta_value <> ''" . $where );
+
+    // What the sync did, for the answer
+    $summary = array( 'linked' => 0, 'updated' => 0, 'unchanged' => 0, 'missing' => array(), 'inactive' => array(), 'names' => array() );
+    while( ( $row = mysqli_fetch_assoc( $result_set ) ) !== NULL ){
+        $summary[ 'linked' ]++;
+        $item_id = trim( (string) $row[ 'item_id' ] );     // QuickBooks item the product is linked to
+        if( !isset( $by_id[ $item_id ] ) ){
+            // Not in QuickBooks any more: keep the last known name, report it
+            $summary[ 'missing' ][] = "SKU " . $row[ 'sku' ] . " (item " . $item_id . ")";
+            continue;
+        }
+        $item = $by_id[ $item_id ];
+        $name = trim( (string) $item->Name );               // QuickBooks name of the item
+        if( (string) $item->Active !== 'true' ){
+            $summary[ 'inactive' ][] = "SKU " . $row[ 'sku' ] . " (item " . $item_id . ")";
+        }
+        $summary[ 'names' ][ $row[ 'product_id' ] ] = $name;
+        if( $name === (string) $row[ 'quickbooks_product_name' ] ){
+            $summary[ 'unchanged' ]++;
+            continue;
+        }
+        quickbooksStoreProductName( $row[ 'product_id' ], $name );
+        $summary[ 'updated' ]++;
+    }
+    return $summary;
+}
+
+/**
  * @description QuickBooks item ID for a SKU: the one stored on the CRM product, else the active QuickBooks item with
  *              that SKU (then stored on the product). Never guesses between several items.
  * @param object $dataService - QuickBooks DataService
@@ -138,6 +206,7 @@ function quickbooksResolveItemForSku( $dataService, $sku, &$reason ){
     }
 
     ProductMeta::setProductMetaValue( $product_id, ProductMeta::DB_PRODUCT_META_KEY_QUICKBOOKS_PRODUCT_ID, escape_string( $matches[ 0 ][ 'id' ] ) );
+    quickbooksStoreProductName( $product_id, $matches[ 0 ][ 'name' ] );        // 1.0.42: keep the QuickBooks name too
     return $matches[ 0 ][ 'id' ];
 }
 

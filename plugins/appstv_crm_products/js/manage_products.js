@@ -630,6 +630,22 @@ function initCreateProductModal(){
 
 // Creates an HTML Element for the Select Tag's options for each value that is supplied to it
 var canLinkQuickBooks = false;       // 1.0.39: set from get_crm_products
+var canSyncQuickBooksNames = false;  // 1.0.42: set from get_crm_products (sync_crm_products_quickbooks_names)
+
+/**
+ * @description Tooltip text of a product name: its QuickBooks name, or why there is none (1.0.42)
+ * @param {object} value - Product row from get_crm_products
+ * @returns {string} Plain text (escape it before putting it in HTML)
+ */
+function quickBooksNameTooltip( value ){
+    if( !value.quickbooks_product_id ){
+        return 'Not linked to QuickBooks';
+    }
+    if( !value.quickbooks_product_name ){
+        return 'QuickBooks name not synced yet';
+    }
+    return 'QuickBooks: ' + value.quickbooks_product_name;
+}
 
 function createTableRow( value ){
     var html = '<tr class="product-item" data-id="'+ value.id +'" data-product-id="'+ value.product_id +'"' +
@@ -640,7 +656,8 @@ function createTableRow( value ){
             '</td>\n';
     html += '<td>'+ value.product_id +'</td>\n';
     html += '<td>'+ value.sku +'</td>\n';
-    html += '<td class="product-name">'+ value.name +'</td>\n';
+    // 1.0.42: hovering the name shows the QuickBooks name (tooltip set up once on the table, see initQuickBooksNames)
+    html += '<td class="product-name"><span class="product-qb-name" data-bs-toggle="tooltip" title="'+ qbEscape( quickBooksNameTooltip( value ) ) +'">'+ value.name +'</span></td>\n';
 
     var physical_product = (value.physical_product=="1")?'<span class="badge rounded badge-success">YES</span>':'<span class="badge rounded badge-info">NO</span>';
     html += '<td>'+ physical_product +'</td>\n';       
@@ -652,7 +669,9 @@ function createTableRow( value ){
     html += '<td>' +
                 '<a href="#" class="me-4" title="Edit Product" onclick="editProduct(this,event);"><i class="fa-regular fs-2x text-primary fa-pen-to-square"></i></a> ' + 
                 '<a href="#" class="me-4" title="Manage Inventory" onclick="manageInventory(this,event);"><i class="fa-solid fs-2x text-warning fa-boxes-stacked"></i></a>' + 
-                '<a href="#" class="" title="Sync Products" onclick="syncProducts(this,event);"><i class="fa-solid fs-2x text-info fa-rotate"></i></a>' +
+                // 1.0.42: the Sync icon refreshes this product's QuickBooks name (it did nothing before)
+                ( canSyncQuickBooksNames ?
+                    '<a href="#" class="" title="Sync QuickBooks Name" onclick="syncProducts(this,event);"><i class="fa-solid fs-2x text-info fa-rotate"></i></a>' : '' ) +
                 action_quickbooks +
             '</td>';
     html += '</tr>\n';
@@ -712,6 +731,9 @@ function loadAllProductsIntoTable(){
             console.log( data );
 
             canLinkQuickBooks = ( info[ 'can_link_quickbooks' ] == 1 );
+            canSyncQuickBooksNames = ( info[ 'can_sync_quickbooks_names' ] == 1 );     // 1.0.42
+            $( '#btn_sync_quickbooks_names' ).toggleClass( 'd-none', !canSyncQuickBooksNames );
+            $( '.tooltip' ).remove();     // 1.0.42: a tooltip open on a row that is about to be redrawn
 
             var html = '';
             
@@ -1074,5 +1096,77 @@ function saveQuickBooksItem(){
         $( '#modal_quickbooks_item' ).modal( 'hide' );
         showSimpleToast( 'success', qbAnswerMessage( info ) );
         loadAllProductsIntoTable();
+    });
+}
+
+
+/* ---------- QuickBooks name of a product (1.0.42) ---------- */
+
+$( document ).ready(function(){
+    initQuickBooksNames();
+});
+
+/**
+ * @description Sets up the QuickBooks name tooltips (delegated, so redrawn rows and other DataTable pages work)
+ *              and the "Sync names from QuickBooks" button
+ * @returns {void}
+ */
+function initQuickBooksNames(){
+    $( table ).tooltip({
+        selector: '.product-qb-name'
+    });
+    $( '#btn_sync_quickbooks_names' ).on( 'click', function(){
+        syncQuickBooksNames( '', $( this ) );
+    });
+}
+
+/**
+ * @description Row Sync icon: refreshes the QuickBooks name of that product. The name is a CRM button since
+ *              1.0.0 (onclick="syncProducts") that had no code until 1.0.42.
+ * @param {HTMLElement} thees - Clicked icon link
+ * @param {Event} event - Click event
+ * @returns {void}
+ */
+function syncProducts( thees, event ){
+    event.preventDefault();
+    var tr = $( thees ).closest( 'tr' );      // Row of the product
+    syncQuickBooksNames( tr.attr( 'data-product-id' ), $( thees ) );
+}
+
+/**
+ * @description Posts sync_crm_products_quickbooks_names, shows the result and reloads the list
+ * @param {string} productId - One CRM product_id, or '' for every linked product
+ * @param {jQuery} trigger - Button or icon link that started it (disabled while QuickBooks answers)
+ * @returns {void}
+ */
+function syncQuickBooksNames( productId, trigger ){
+    if( trigger.hasClass( 'disabled' ) ){
+        return;
+    }
+    trigger.addClass( 'disabled' ).prop( 'disabled', true );
+    $.ajax({
+        url: getWebservice(),
+        type: 'POST',
+        dataType: 'json',
+        data: { what_do_you_want: 'sync_crm_products_quickbooks_names', product_id: productId },
+        success: function( returned_data ){
+            trigger.removeClass( 'disabled' ).prop( 'disabled', false );
+            var jSon = parseJSONWithError( returned_data, "Server Side error occurred ! Contact Technical Support..." );
+            if( jSon == false ){
+                return;
+            }
+            jSon = jSon[ 0 ];
+            var message = qbAnswerMessage( jSon[ 'info' ] );     // One readable line from the server
+            if( jSon[ 'type' ] != 'success' ){
+                showSimpleSweetAlert( qbEscape( message ), 'error', 'Okay', 'btn btn-primary' );
+                return;
+            }
+            showSimpleToast( 'success', message );
+            loadAllProductsIntoTable();
+        },
+        error: function(){
+            trigger.removeClass( 'disabled' ).prop( 'disabled', false );
+            showSimpleSweetAlert( 'The server could not be reached. Please try again.', 'error', 'Okay', 'btn btn-primary' );
+        }
     });
 }

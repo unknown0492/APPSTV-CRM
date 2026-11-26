@@ -20,6 +20,10 @@ checkAuthorizationForPage( 'manage_products' );
                 <div class="card-toolbar ">
                     <!--begin::Toolbar-->
                     <div class="d-flex flex-wrap " data-selected-table-toolbar="table_products">
+                        <!-- 1.0.42: copies the QuickBooks item names of all linked products; shown when the role may sync -->
+                        <button type="button" class="btn btn-sm btn-light-primary me-3 mt-2 d-none" id="btn_sync_quickbooks_names">
+                            <i class="fa-solid fa-rotate me-1"></i>Sync names from QuickBooks
+                        </button>
                         <button class="btn btn-sm btn-primary me-3 mt-2" id="btn_open_create_product_modal">Create</button>
                     </div>
                     <!--begin::Toolbar-->

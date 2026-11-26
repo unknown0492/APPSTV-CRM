@@ -5,3 +5,9 @@
 .scodezy-selected-files .file-item .remove-file-image{
     cursor: pointer;
 }
+
+/* 1.0.42: product name with its QuickBooks name in a tooltip; the dotted underline says "hover me" */
+#table_products .product-qb-name{
+    cursor: help;
+    border-bottom: 1px dotted var(--bs-gray-500, #a1a5b7);
+}
